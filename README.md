@@ -37,5 +37,81 @@ Demonstrate a set of modern MariaDB SQL features that remove work you would othe
 
 ## Tech stack
 
-- **Database:** MariaDB
-- **Application code:** Python
+- **Database:** MariaDB 11.4 (via Docker)
+- **Application code:** Python 3
+
+---
+
+## Setup
+
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+- Python 3.10+
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/tstukalin1/mighty_coders_capstone.git
+cd mighty_coders_capstone
+git checkout dev
+```
+
+### 2. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+The default values in `.env` work out of the box. Edit only if port `3307` is already taken on your machine.
+
+### 3. Start MariaDB
+
+```bash
+docker compose up -d
+```
+
+MariaDB 11.4 will be available at `127.0.0.1:3307`.
+
+To stop it:
+```bash
+docker compose down
+```
+
+To stop and delete all data:
+```bash
+docker compose down -v
+```
+
+### 4. Set up Python environment
+
+```bash
+python -m venv .venv
+```
+
+Activate it:
+
+```bash
+# macOS / Linux
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 5. Test the connection
+
+```bash
+python db.py
+```
+
+Expected output:
+```
+Connected! MariaDB version: 11.4.x-MariaDB-...
+```
