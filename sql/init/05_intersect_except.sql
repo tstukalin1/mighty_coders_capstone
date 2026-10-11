@@ -12,60 +12,63 @@
 -- EXCEPT    — rows from A that do not appear in B (A \ B).
 -- Both SELECTs must return the same number of columns with compatible types.
 
-CREATE TABLE IF NOT EXISTS enrolled_python (
-    student VARCHAR(100) NOT NULL
+CREATE TABLE IF NOT EXISTS routes_from_ams (
+    destination CHAR(3) NOT NULL  -- IATA code of destination airport
 );
 
-CREATE TABLE IF NOT EXISTS enrolled_sql (
-    student VARCHAR(100) NOT NULL
+CREATE TABLE IF NOT EXISTS routes_from_fra (
+    destination CHAR(3) NOT NULL  -- IATA code of destination airport
 );
 
-INSERT INTO enrolled_python (student) VALUES
-    ('alice'), ('bob'), ('carol'), ('dave');
+-- sample of real destinations from Amsterdam Schiphol (AMS)
+INSERT INTO routes_from_ams (destination) VALUES
+    ('LHR'), ('CDG'), ('MAD'), ('FCO'), ('BCN'),
+    ('VIE'), ('ZRH'), ('DXB'), ('JFK'), ('BKK');
 
-INSERT INTO enrolled_sql (student) VALUES
-    ('bob'), ('carol'), ('eve'), ('frank');
+-- sample of real destinations from Frankfurt Airport (FRA)
+INSERT INTO routes_from_fra (destination) VALUES
+    ('LHR'), ('CDG'), ('MAD'), ('FCO'), ('BCN'),
+    ('MUC'), ('ORD'), ('JFK'), ('NRT'), ('SIN');
 
 -- OLD WAY: INTERSECT via JOIN
 -- INNER JOIN returns rows where both tables have a match on the join condition.
 -- This produces the correct result, but the intent (set intersection) is not obvious
 -- from reading the query — it looks like a regular join, not a set operation.
-SELECT p.student
-FROM enrolled_python p
-INNER JOIN enrolled_sql s ON p.student = s.student;
+SELECT a.destination
+FROM routes_from_ams a
+INNER JOIN routes_from_fra f ON a.destination = f.destination;
 
 -- OLD WAY: EXCEPT via LEFT JOIN + IS NULL
 -- LEFT JOIN keeps every row from the left table, filling right-side columns with NULL
--- when there is no match. WHERE s.student IS NULL isolates the unmatched left rows.
+-- when there is no match. WHERE IS NULL isolates the unmatched left rows.
 -- Again correct, but reads like a join trick rather than a set difference.
-SELECT p.student
-FROM enrolled_python p
-LEFT JOIN enrolled_sql s ON p.student = s.student
-WHERE s.student IS NULL;
+SELECT a.destination
+FROM routes_from_ams a
+LEFT JOIN routes_from_fra f ON a.destination = f.destination
+WHERE f.destination IS NULL;
 
 -- NEW WAY: INTERSECT
--- Returns students who appear in both tables. Duplicate rows are removed automatically,
--- just like UNION — no DISTINCT needed.
-SELECT student FROM enrolled_python
+-- Destinations served from both AMS and FRA. Duplicates removed automatically.
+SELECT destination FROM routes_from_ams
 INTERSECT
-SELECT student FROM enrolled_sql;
+SELECT destination FROM routes_from_fra;
 
 -- NEW WAY: EXCEPT
--- Returns students in the Python table that are not in the SQL table (Python \ SQL).
--- Order of the operands matters: swap them to get the opposite difference.
-SELECT student FROM enrolled_python
+-- Destinations from AMS not served from FRA (AMS \ FRA).
+-- Order of operands matters: swap them to get the opposite difference.
+SELECT destination FROM routes_from_ams
 EXCEPT
-SELECT student FROM enrolled_sql;
+SELECT destination FROM routes_from_fra;
 
--- EXCEPT: SQL \ Python
--- Reversing operands gives students in SQL but not in Python.
-SELECT student FROM enrolled_sql
+-- EXCEPT: FRA \ AMS
+-- Reversing operands gives destinations from FRA not served from AMS.
+SELECT destination FROM routes_from_fra
 EXCEPT
-SELECT student FROM enrolled_python;
+SELECT destination FROM routes_from_ams;
 
--- chained: Python only, sorted
+-- chained: AMS-only destinations, sorted
 -- Operators can be chained; ORDER BY applies to the final combined result.
-SELECT student FROM enrolled_python
+SELECT destination FROM routes_from_ams
 EXCEPT
-SELECT student FROM enrolled_sql
-ORDER BY student;
+SELECT destination FROM routes_from_fra
+ORDER BY destination;
