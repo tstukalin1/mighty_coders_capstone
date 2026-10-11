@@ -1,8 +1,9 @@
 """
-after.py — UPDATE/DELETE with CTEs (MariaDB 10.2+)
+after.py — UPDATE/DELETE with derived-table JOIN (MariaDB)
 
-The WITH clause names and isolates the filtering logic.
-No double nesting needed. Complex conditions stay readable.
+JOIN on a derived table replaces double-nested subqueries.
+No extra nesting needed. Intent is clear at a glance.
+Note: WITH...UPDATE/DELETE is PostgreSQL-only, not supported in MariaDB 11.4.
 Source data: OpenFlights airports dataset (airports.dat).
 
 """
@@ -59,19 +60,16 @@ def main():
     try:
         with conn.cursor() as cur:
             setup(cur, airports)
-            cur.execute(  #CTE names the filter — intent is clear before the UPDATE
-                "WITH registered AS ("
-                "  SELECT id FROM demo_airports WHERE iata != ''"
-                ")"
-                " UPDATE demo_airports SET status = 'active'"
-                " WHERE id IN (SELECT id FROM registered)"
+            cur.execute(  #JOIN on derived table — filter named inline, no nesting
+                "UPDATE demo_airports"
+                " JOIN (SELECT id FROM demo_airports WHERE iata != '') AS registered"
+                " ON demo_airports.id = registered.id"
+                " SET demo_airports.status = 'active'"
             )
-            cur.execute(  #CTE makes the DELETE condition self-documenting
-                "WITH no_iata AS ("
-                "  SELECT id FROM demo_airports WHERE iata = ''"
-                ")"
-                " DELETE FROM demo_airports"
-                " WHERE id IN (SELECT id FROM no_iata)"
+            cur.execute(  #same pattern for DELETE — intent clear, no double nesting
+                "DELETE demo_airports FROM demo_airports"
+                " JOIN (SELECT id FROM demo_airports WHERE iata = '') AS no_iata"
+                " ON demo_airports.id = no_iata.id"
             )
             cur.execute("SELECT iata, name, country, status FROM demo_airports ORDER BY iata")
             rows = cur.fetchall()
