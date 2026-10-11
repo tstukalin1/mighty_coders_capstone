@@ -36,9 +36,10 @@ class TestCTEUpdate:
     def test_cte_update_approves_high_value_orders(self, conn):
         with conn.cursor() as cur:
             cur.execute(
-                "WITH high_value AS (SELECT id FROM test_orders WHERE amount >= 100.00)"
-                " UPDATE test_orders SET status = 'approved'"
-                " WHERE id IN (SELECT id FROM high_value)"
+                "UPDATE test_orders"
+                " JOIN (SELECT id FROM test_orders WHERE amount >= 100.00) AS high_value"
+                " ON test_orders.id = high_value.id"
+                " SET test_orders.status = 'approved'"
             )
             cur.execute(
                 "SELECT customer FROM test_orders WHERE status = 'approved' ORDER BY customer"
@@ -49,9 +50,10 @@ class TestCTEUpdate:
     def test_cte_update_leaves_small_orders_pending(self, conn):
         with conn.cursor() as cur:
             cur.execute(
-                "WITH high_value AS (SELECT id FROM test_orders WHERE amount >= 100.00)"
-                " UPDATE test_orders SET status = 'approved'"
-                " WHERE id IN (SELECT id FROM high_value)"
+                "UPDATE test_orders"
+                " JOIN (SELECT id FROM test_orders WHERE amount >= 100.00) AS high_value"
+                " ON test_orders.id = high_value.id"
+                " SET test_orders.status = 'approved'"
             )
             cur.execute(
                 "SELECT customer FROM test_orders WHERE status = 'pending' ORDER BY customer"
@@ -64,9 +66,9 @@ class TestCTEDelete:
     def test_cte_delete_removes_small_orders(self, conn):
         with conn.cursor() as cur:
             cur.execute(
-                "WITH small_orders AS (SELECT id FROM test_orders WHERE amount < 100.00)"
-                " DELETE FROM test_orders"
-                " WHERE id IN (SELECT id FROM small_orders)"
+                "DELETE test_orders FROM test_orders"
+                " JOIN (SELECT id FROM test_orders WHERE amount < 100.00) AS small_orders"
+                " ON test_orders.id = small_orders.id"
             )
             cur.execute("SELECT customer FROM test_orders ORDER BY customer")
             remaining = [r[0] for r in cur.fetchall()]
@@ -75,9 +77,9 @@ class TestCTEDelete:
     def test_cte_delete_count(self, conn):
         with conn.cursor() as cur:
             cur.execute(
-                "WITH small_orders AS (SELECT id FROM test_orders WHERE amount < 100.00)"
-                " DELETE FROM test_orders"
-                " WHERE id IN (SELECT id FROM small_orders)"
+                "DELETE test_orders FROM test_orders"
+                " JOIN (SELECT id FROM test_orders WHERE amount < 100.00) AS small_orders"
+                " ON test_orders.id = small_orders.id"
             )
             cur.execute("SELECT COUNT(*) FROM test_orders")
             count = cur.fetchone()[0]
