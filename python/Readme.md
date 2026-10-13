@@ -6,7 +6,7 @@ This project explores progress reporting for long-running MariaDB operations, sp
 
 ## Technologies Used
 
-- MariaDB 11.8.9
+- MariaDB 11.4
 - Docker
 - Python 3.14
 - mysql-connector-python
