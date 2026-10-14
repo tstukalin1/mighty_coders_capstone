@@ -28,8 +28,8 @@ def monitor_process(stop_event):
                 WHERE ID <> CONNECTION_ID()
                   AND INFO IS NOT NULL
                   AND (
-                    INFO LIKE 'ALTER TABLE airlines_progress_demo%'
-                    OR INFO LIKE 'CHECK TABLE airlines_progress_demo%'
+                    INFO LIKE 'ALTER TABLE airlines%'
+                    OR INFO LIKE 'CHECK TABLE airlines%'
                   )
             """)
 
@@ -119,7 +119,7 @@ def run_alter_table():
         start = time.perf_counter()
 
         cursor.execute("""
-            ALTER TABLE airlines_progress_demo
+            ALTER TABLE airlines
             ADD INDEX idx_name (airline_name),
             ALGORITHM=INPLACE,
             LOCK=NONE
