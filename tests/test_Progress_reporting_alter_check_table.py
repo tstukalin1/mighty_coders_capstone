@@ -13,7 +13,7 @@ import threading
 import pytest
 
 
-TABLE_NAME = "airlines_progress_demo"
+TABLE_NAME = "airlines"
 INDEX_NAME = "idx_name"
 
 
@@ -76,7 +76,7 @@ def test_alter_table_add_index(conn):
 
         if not index_exists:
             cursor.execute("""
-                ALTER TABLE airlines_progress_demo
+                ALTER TABLE airlines
                 ADD INDEX idx_name (airline_name),
                 ALGORITHM=INPLACE,
                 LOCK=NONE
@@ -103,7 +103,7 @@ def test_alter_table_add_index(conn):
 def test_check_table(conn):
     """Run CHECK TABLE and verify an OK result."""
     with conn.cursor() as cursor:
-        cursor.execute("CHECK TABLE airlines_progress_demo")
+        cursor.execute("CHECK TABLE airlines")
         results = cursor.fetchall()
 
     assert results
@@ -115,7 +115,7 @@ def test_query_benchmark(conn):
     """Measure query timing and retrieve EXPLAIN output."""
     query = """
         SELECT COUNT(*)
-        FROM airlines_progress_demo
+        FROM airlines
         WHERE airline_name = %s
     """
     timings = []
