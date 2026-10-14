@@ -1,5 +1,5 @@
 
-USE airlines_db;
+USE mighty_coders;
 
 DROP PROCEDURE IF EXISTS get_airline_row;
 
