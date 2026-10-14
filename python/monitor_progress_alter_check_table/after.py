@@ -6,20 +6,11 @@ Performance comparison: added'''
 import time
 import threading
 import mysql.connector
+import os
 
-DB_CONFIG = {
-    "host": "127.0.0.1",
-    "port": 3306,
-    "user": "root",
-    "password": "1234",
-    "database": "airlines_db",
-}
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-TABLE_NAME = "airlines_progress_demo"
-INDEX_NAME = "idx_name"
-SEARCH_VALUE = "American Airlines"
-BENCHMARK_RUNS = 5
-
+from db import get_connection
 
 def monitor_process(stop_event):
     """Monitor ALTER TABLE and CHECK TABLE operations."""
