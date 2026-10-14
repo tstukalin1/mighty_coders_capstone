@@ -2,18 +2,11 @@
 
 
 import mysql.connector
+import os
 
-DB_CONFIG = {
-    "host": "127.0.0.1",
-    "port": 3306,
-    "user": "root",
-    "password": "1234",
-    "database": "mighty_coders",
-}
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-
-def get_connection():
-    return mysql.connector.connect(**DB_CONFIG)
+from db import get_connection
 
 
 def create_procedure():
