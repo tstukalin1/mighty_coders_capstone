@@ -1,4 +1,4 @@
-CREATE TABLE employees (
+CREATE OR REPLACE TABLE employees (
     emp_id INT PRIMARY KEY,
     emp_name VARCHAR(100),
     salary DECIMAL(10,2),
