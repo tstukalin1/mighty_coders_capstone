@@ -1,3 +1,8 @@
+''' before changes: 
+Average query time:NA
+Execution plan: NA
+Performance comparison: NA'''
+
 import time
 import threading
 import mysql.connector
