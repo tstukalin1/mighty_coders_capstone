@@ -1,12 +1,18 @@
 '''AFTER: Use MariaDB's ROW data type to group the airline fields into one record, with additional positive and negative test cases'''
 
 import time
+import threading
 import mysql.connector
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from db import get_connection
+
+def get_connection():
+    """Create a new MariaDB connection."""
+    return mysql.connector.connect(**DB_CONFIG)
 
 
 def create_procedure():
@@ -50,7 +56,7 @@ def create_procedure():
         """
 
         cursor.execute(sql)
-        print("AFTER procedure created successfully.")
+        print("ROW stored procedure created successfully.")
 
     finally:
         cursor.close()
@@ -65,11 +71,7 @@ def test_airline(airline_id, should_exist):
     try:
         start = time.perf_counter()
 
-        cursor.execute(
-            "CALL get_airline_row(%s)",
-            (airline_id,)
-        )
-
+        cursor.execute("CALL get_airline_row(%s)", (airline_id,))
         result = cursor.fetchone()
 
         while cursor.nextset():
@@ -89,7 +91,6 @@ def test_airline(airline_id, should_exist):
             assert "active" in result
 
             print("PASS: Positive scenario")
-
         else:
             assert result is not None
             assert result.get("message") == "Airline not found"
@@ -114,9 +115,13 @@ def get_existing_ids(limit=3):
 
     try:
         cursor.execute(
-            "SELECT airline_id FROM airlines "
-            "ORDER BY airline_id LIMIT %s",
-            (limit,)
+            """
+            SELECT airline_id
+            FROM airlines
+            ORDER BY airline_id
+            LIMIT %s
+            """,
+            (limit,),
         )
         return [row[0] for row in cursor.fetchall()]
 
@@ -133,17 +138,20 @@ def main():
     existing_ids = get_existing_ids()
 
     if not existing_ids:
-        raise RuntimeError("No airline records found for positive tests.")
+        raise RuntimeError(
+            "No airline records found in the airlines table."
+        )
 
     tests = [(airline_id, True) for airline_id in existing_ids]
 
-    # Select an ID guaranteed to be absent for the negative test.
+    # Find a missing ID for the negative test.
     conn = get_connection()
     cursor = conn.cursor()
+
     try:
         cursor.execute("SELECT MAX(airline_id) FROM airlines")
         maximum_id = cursor.fetchone()[0]
-        missing_id = maximum_id + 1
+        missing_id = (maximum_id or 0) + 1
     finally:
         cursor.close()
         conn.close()
@@ -156,15 +164,17 @@ def main():
         if test_airline(airline_id, should_exist):
             passed += 1
 
+    failed = len(tests) - passed
+
     print("\n=== TEST SUMMARY ===")
     print(f"Total tests: {len(tests)}")
     print(f"Passed: {passed}")
-    print(f"Failed: {len(tests) - passed}")
+    print(f"Failed: {failed}")
 
-    if passed != len(tests):
+    if failed:
         raise AssertionError("Some tests failed.")
 
-    print("\nAFTER experiment completed.")
+    print("\nROW Type experiment completed successfully.")
 
 
 if __name__ == "__main__":
