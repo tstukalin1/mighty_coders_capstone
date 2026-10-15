@@ -13,6 +13,7 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./sql/init:/docker-entrypoint-initdb.d
+      - ./data:/docker-entrypoint-initdb.d/data
 
 volumes:
   mariadb_data:
