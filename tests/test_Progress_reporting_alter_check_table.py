@@ -36,13 +36,13 @@ def test_table_and_column_exist(conn):
             FROM information_schema.COLUMNS
             WHERE TABLE_SCHEMA = DATABASE()
               AND TABLE_NAME = %s
-              AND COLUMN_NAME = 'airline_name'
+              AND COLUMN_NAME = 'name'
             """,
             (TABLE_NAME,),
         )
         assert cursor.fetchone()[0] == 1
 
-    print("PASS: Table and airline_name column exist")
+    print("PASS: Table and name column exist")
 
 
 def test_progress_monitor_query(conn):
@@ -77,7 +77,7 @@ def test_alter_table_add_index(conn):
         if not index_exists:
             cursor.execute("""
                 ALTER TABLE airlines
-                ADD INDEX idx_name (airline_name),
+                ADD INDEX idx_name (name),
                 ALGORITHM=INPLACE,
                 LOCK=NONE
             """)
@@ -111,12 +111,13 @@ def test_check_table(conn):
     print("PASS: CHECK TABLE returned OK")
 
 
+
 def test_query_benchmark(conn):
     """Measure query timing and retrieve EXPLAIN output."""
     query = """
         SELECT COUNT(*)
         FROM airlines
-        WHERE airline_name = %s
+        WHERE name = %s
     """
     timings = []
 
