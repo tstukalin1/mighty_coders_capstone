@@ -1,9 +1,13 @@
 """
-after.py -- stored procedure with ROW TYPE OF
+after.py -- stored procedure with a ROW variable
 
-One ROW variable holds the whole row, and its shape follows the table.
-After a column is added, the same procedure can read it with no change to
-DECLARE or SELECT * INTO.
+One ROW variable holds the whole row. Fields are read as rec.name, and a field
+can be changed with SET rec.name = ... . ROW TYPE OF airlines goes one step
+further: the variable takes its shape from the table, so no field list is
+written at all.
+
+The init script sql/init/08_row_type.sql already creates get_airline_row; this
+script also creates two demo procedures and drops them again at the end.
 
 Run after the database is up:  python python/row_type/after.py
 """
@@ -15,53 +19,41 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from db import get_connection
 
+PROC_TYPE_OF = "demo_airline_typeof"
+
+
+def first_row(cur, sql):
+    cur.execute(sql)
+    row = cur.fetchone()
+    while cur.nextset():
+        pass
+    return row
+
 
 def main():
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("DROP PROCEDURE IF EXISTS demo_get_employee_new")
-            cur.execute("CREATE OR REPLACE TABLE demo_emp_new ("
-                        " emp_id INT PRIMARY KEY, emp_name VARCHAR(100),"
-                        " salary DECIMAL(10,2), department VARCHAR(50))")
-            cur.execute("INSERT INTO demo_emp_new VALUES (101, 'Rahul', 50000, 'QA')")
+            print("[after.py] procedure with a ROW variable")
+            print("  variables declared : 1 (rec ROW (id, name, country, active))")
+            print("  INTO targets       : 4 fields of the same variable (rec.id ... rec.active)")
+            print(f"  get_airline_row(2)       : {first_row(cur, 'CALL get_airline_row(2)')}")
+            print(f"  get_airline_row(999999)  : {first_row(cur, 'CALL get_airline_row(999999)')}")
+
+            cur.execute(f"DROP PROCEDURE IF EXISTS {PROC_TYPE_OF}")
             cur.execute(
-                "CREATE PROCEDURE demo_get_employee_new(IN p_id INT) "
+                f"CREATE PROCEDURE {PROC_TYPE_OF}(IN p_id INT) "
                 "BEGIN "
-                "  DECLARE emp ROW TYPE OF demo_emp_new; "
-                "  SELECT * INTO emp FROM demo_emp_new WHERE emp_id = p_id; "
-                "  SELECT emp.emp_id, emp.emp_name, emp.salary, emp.department; "
+                "  DECLARE a ROW TYPE OF airlines; "
+                "  SELECT * INTO a FROM airlines WHERE id = p_id; "
+                "  SET a.name = UPPER(a.name); "
+                "  SELECT a.id, a.name, a.country, a.active; "
                 "END"
             )
-            cur.execute("CALL demo_get_employee_new(101)")
-            row = cur.fetchone()
-            while cur.nextset():
-                pass
+            print("  ROW TYPE OF airlines, with SET a.name = UPPER(a.name):")
+            print(f"  result for id 2          : {first_row(cur, f'CALL {PROC_TYPE_OF}(2)')}")
 
-            print("[after.py] procedure with ROW TYPE OF")
-            print("  variables declared : 1 (emp ROW TYPE OF demo_emp_new)")
-            print("  INTO targets       : 1 (SELECT * INTO emp)")
-            print(f"  result             : {row}")
-
-            # the row variable follows the table definition
-            cur.execute("ALTER TABLE demo_emp_new ADD COLUMN email VARCHAR(150), ALGORITHM=INSTANT")
-            cur.execute("UPDATE demo_emp_new SET email = 'rahul@gmail.com' WHERE emp_id = 101")
-            cur.execute(
-                "CREATE OR REPLACE PROCEDURE demo_get_employee_new(IN p_id INT) "
-                "BEGIN "
-                "  DECLARE emp ROW TYPE OF demo_emp_new; "
-                "  SELECT * INTO emp FROM demo_emp_new WHERE emp_id = p_id; "
-                "  SELECT emp.emp_name, emp.email; "
-                "END"
-            )
-            cur.execute("CALL demo_get_employee_new(101)")
-            print(f"  after ADD COLUMN email, emp.email is available: {cur.fetchone()}")
-            while cur.nextset():
-                pass
-
-            cur.execute("DROP PROCEDURE IF EXISTS demo_get_employee_new")
-            cur.execute("DROP TABLE IF EXISTS demo_emp_new")
-        conn.commit()
+            cur.execute(f"DROP PROCEDURE IF EXISTS {PROC_TYPE_OF}")
     finally:
         conn.close()
 
