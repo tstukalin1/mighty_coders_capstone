@@ -6,7 +6,7 @@ USE mighty_coders;
 -- be watched from a SECOND connection while the ALTER runs on the first one;
 -- python/progress_reporting/after.py does exactly that.
 --
--- This script runs after flight_dataset.sql (alphabetical order) and uses its
+-- This script runs after 12_flight_dataset.sql (alphabetical order) and uses its
 -- own demo table, built from the airlines names, so airlines itself is never
 -- changed. The table is dropped again at the end.
 

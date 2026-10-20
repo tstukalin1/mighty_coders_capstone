@@ -1,5 +1,5 @@
 """
-test_progress_reporting.py -- tests for sql/init/progress_reporting.sql and
+test_progress_reporting.py -- tests for sql/init/13_progress_reporting.sql and
 python/progress_reporting/ (ALTER TABLE ... ADD INDEX with progress reporting)
 
 Covers:
