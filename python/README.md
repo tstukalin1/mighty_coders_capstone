@@ -31,45 +31,25 @@ INSERT INTO products (name, metadata) VALUES ('Bad', 'not-json');
 
 ---
 
-## 2. INSERT + SELECT (before.py)
+## 2. INSERT + SELECT vs INSERT ... RETURNING
 
-**Файл:** `python/before.py`
+Python-примеры находятся в `python/returning/`:
 
-Классический подход: после `INSERT` делаем отдельный `SELECT` по `lastrowid`.
+- `before.py` — классический подход: `INSERT` + отдельный `SELECT` по `lastrowid`
+- `after.py` — `INSERT ... RETURNING` возвращает строку за один round-trip
 
 ```python
+#before: два запроса
 cur.execute("INSERT INTO products (name, metadata) VALUES (%s, %s)", (...))
 inserted_id = cur.lastrowid
 cur.execute("SELECT id, name, metadata FROM products WHERE id = %s", (inserted_id,))
+
+#after: один запрос
+cur.execute("INSERT INTO products (name, metadata) VALUES (%s, %s) RETURNING id, name, metadata", (...))
 row = cur.fetchone()
 ```
 
-**Недостатки:**
-- Два round-trip к базе данных
-- Возможна гонка данных в конкурентной среде (между INSERT и SELECT)
-
----
-
-## 3. INSERT ... RETURNING (after.py)
-
-**Файл:** `python/after.py`
-
-`RETURNING` возвращает данные вставленной строки прямо в ответе на `INSERT`.
-
-```python
-cur.execute(
-    "INSERT INTO products (name, metadata) VALUES (%s, %s) RETURNING id, name, metadata",
-    (...)
-)
-row = cur.fetchone()
-```
-
-**Преимущества:**
-- Один round-trip к базе данных
-- Атомарно: нет гонки данных
-- Можно возвращать любые колонки, включая вычисляемые
-
-> Требуется MariaDB 10.5+. Поддерживается также `UPDATE ... RETURNING` и `DELETE ... RETURNING`.
+> Требуется MariaDB 10.5+. Поддерживается также `DELETE ... RETURNING`.
 
 ---
 
@@ -80,6 +60,6 @@ row = cur.fetchone()
 docker compose up -d
 
 # Запуск примеров
-python python/before.py
-python python/after.py
+python python/returning/before.py
+python python/returning/after.py
 ```
