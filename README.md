@@ -83,6 +83,12 @@ To stop and delete all data:
 docker compose down -v
 ```
 
+> **After pulling new changes that add init scripts** (new tables, datasets), recreate the volume so MariaDB re-runs all scripts:
+> ```bash
+> docker compose down -v && docker compose up -d
+> ```
+> All data is loaded from `sql/init/` automatically, so nothing is lost.
+
 ### 4. Set up Python environment
 
 ```bash

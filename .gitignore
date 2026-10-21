@@ -209,6 +209,9 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Local Claude Code instructions
+CLAUDE.md
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
