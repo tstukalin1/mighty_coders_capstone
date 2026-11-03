@@ -4,7 +4,7 @@ USE mighty_coders;
 -- A ROW variable holds one whole row in a single variable, instead of one
 -- DECLARE and one INTO target per column.
 --
--- Dataset: the airlines table from flight_dataset.sql. That script runs later
+-- Dataset: the airlines table from 12_flight_dataset.sql. That script runs later
 -- (init scripts run in alphabetical order); this is fine because a stored
 -- routine only looks its table up when it is called.
 
@@ -44,6 +44,6 @@ END //
 
 DELIMITER ;
 
--- Usage (after flight_dataset.sql has loaded the airlines):
+-- Usage (after 12_flight_dataset.sql has loaded the airlines):
 --   CALL get_airline_row(2);        -- 135 Airways, United States, N
 --   CALL get_airline_row(999999);   -- Airline not found

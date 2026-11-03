@@ -1,5 +1,5 @@
 """
-test_row_type.py -- tests for sql/init/08_row_type.sql (ROW data type)
+test_row_type.py -- tests for sql/init/09_row_type.sql (ROW data type)
 
 Covers:
   * get_airline_row from the init script: found, not found, NULL country
@@ -7,7 +7,7 @@ Covers:
   * ROW TYPE OF airlines, and changing a field with SET rec.name = ...
   * a ROW with the wrong number of INTO targets is an error
 
-Dataset: the airlines table (flight_dataset.sql). The tests only read it. They
+Dataset: the airlines table (12_flight_dataset.sql). The tests only read it. They
 create their own procedures (test_rt_*) and drop them again, because DDL
 commits implicitly in MariaDB. Uses the shared `conn` fixture.
 """

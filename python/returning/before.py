@@ -3,7 +3,7 @@ before.py — INSERT/DELETE without RETURNING (classic approach)
 
 Getting the new row, a computed value, or the deleted rows back takes
 extra statements. Runs against team_members (created by
-sql/init/create_or_replace_returning.sql).
+sql/init/11_create_or_replace_returning.sql).
 """
 
 import sys

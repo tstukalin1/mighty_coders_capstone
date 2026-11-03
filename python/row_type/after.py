@@ -6,7 +6,7 @@ can be changed with SET rec.name = ... . ROW TYPE OF airlines goes one step
 further: the variable takes its shape from the table, so no field list is
 written at all.
 
-The init script sql/init/08_row_type.sql already creates get_airline_row; this
+The init script sql/init/09_row_type.sql already creates get_airline_row; this
 script also creates two demo procedures and drops them again at the end.
 
 Run after the database is up:  python python/row_type/after.py

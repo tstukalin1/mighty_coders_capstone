@@ -1,4 +1,4 @@
-# mighty_coders
+# Area 1: Custom Aggregate Functions in SQL — mighty_coders
 Capstone Project 1 for Constructor University
 
 **Authors:** Yosef Gebrewahid Kidane, Timofey Stukalin, Dinu Panackal Devassia
@@ -54,7 +54,6 @@ Demonstrate a set of modern MariaDB SQL features that remove work you would othe
 ```bash
 git clone https://github.com/tstukalin1/mighty_coders_capstone.git
 cd mighty_coders_capstone
-git checkout dev
 ```
 
 ### 2. Configure environment variables
