@@ -1,122 +1,157 @@
-# Area 1: Custom Aggregate Functions in SQL — mighty_coders
-Capstone Project 1 for Constructor University
+A project for area 1, "SQL that saves you work" for the MariaDB student database projects, 2026-09. ([project page](https://mariadb.org/bachelor_hackathon_2026-09/#1-sql-that-saves-you-work))
 
-**Authors:** Yosef Gebrewahid Kidane, Timofey Stukalin, Dinu Panackal Devassia
+# SQL that saves you work — Mighty Coders
 
----
+Capstone Project I, Constructor University, in partnership with the MariaDB Foundation.
 
-## Project Goal
+**Team:** Yosief Gebrewahid Kidane, Dinu Panackal Devassia, Timofey Stukalin
 
-Demonstrate a set of modern MariaDB SQL features that remove work you would otherwise do in application code. The project builds real, runnable examples showing what life looks like **with** and **without** each feature — the extra round trip, the column that sorts wrong, the migration that needs a maintenance window.
-
-### Features covered
-
-- **INET4 / INET6** — native IP address types (4 and 16 bytes instead of a string)
-- **UUID** — a real UUID type, not `CHAR(36)` or hand-encoded `BINARY(16)`
-- **RETURNING** — `INSERT`, `UPDATE`, `DELETE` hand back the rows they touched
-- **CREATE SEQUENCE** — sequences as first-class objects, independent of `AUTO_INCREMENT`
-- **INTERSECT and EXCEPT** — set operations alongside `UNION`
-- **CREATE OR REPLACE** — idempotent DDL that makes migration scripts cleaner
-- **IS JSON** — SQL-standard predicate usable inside a `CHECK` constraint
-- **Invisible columns** — columns absent from `SELECT *` and unkeyed `INSERT`, but accessible by name
-- **ROW type** — composite variables in stored routines
-- **Instant ADD / DROP / MODIFY COLUMN** — schema changes that complete immediately on large tables
-- **Progress reporting** — long `ALTER TABLE` and `CHECK TABLE` report progress
-- **Global temporary tables** — one shared definition, contents private per session
-- **UPDATE / DELETE with CTEs** — a `WITH` clause feeding the statement that changes data
-
-### Evaluation criteria
-
-1. At least two features used where they genuinely belong (depth)
-2. Side-by-side before/after comparison — the extra round trip, the string column that sorts wrong, the migration full of `DROP TABLE IF EXISTS` (depth)
-3. Measured difference where possible — queries saved, bytes saved, migration time (execution)
-4. Runnable examples a reader can paste into their own schema (usability)
-5. Clear guidance on when each feature is worth reaching for, and when it is not (documentation)
+For each feature we wrote the same job twice: once the way you had to do it
+before (`before.py`) and once with the MariaDB feature (`after.py`). Every
+claim below is backed by a script you can run and a test that checks it.
+Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
 
 ---
 
-## Tech stack
+## What we found
 
-- **Database:** MariaDB 11.4 (via Docker)
-- **Application code:** Python 3
+| # | Feature | What it replaces | What we found | Worth it when | Not worth it when | Demo | Tests |
+|---|---|---|---|---|---|---|---|
+| 1 | `INET4` / `INET6` | `VARCHAR(45)` for addresses | Stored in 4 / 16 bytes. Sorts numerically (as text, `'8.8.8.8'` sorts after `'192.168.1.10'`). Invalid values are rejected with error 1292. | A column holds IP addresses. | The column must also hold free text such as `'unknown'`; the engine rejects it. | `python/inet/`, `python/ip_addresses/` | 24 |
+| 2 | `UUID` | `CHAR(36)` | 16 bytes instead of 36. Invalid values are rejected. `DEFAULT UUID()` fills the column. | Ids must be unique across systems. | A plain `INT` is enough; a UUID costs 16 bytes against 4. | `python/uuid_type/` | 5 |
+| 3 | `RETURNING` | `INSERT` + a second `SELECT` | One statement, one round trip, half the statements (see [benchmark](#benchmark)). Each statement returns only its own rows. | You need the generated id or the deleted rows back. | You need it on `UPDATE`: **`UPDATE ... RETURNING` needs 13.0, error 1064 on 11.4.** | `python/returning/`, `python/flight_returning/` | 16 |
+| 4 | `CREATE SEQUENCE` | One `AUTO_INCREMENT` per table | One counter shared by several tables. | Two or more tables need ids from the same series. | One table: `AUTO_INCREMENT` is simpler. | `python/sequence/` | 7 |
+| 5 | `INTERSECT` / `EXCEPT` | `JOIN` / `NOT IN` boilerplate | The intent is readable from the operator name. Demo uses the real OpenFlights routes. | "In both A and B" or "in A but not B". | A query that already needs a `JOIN` for other columns. | `python/intersect_except/` | 5 |
+| 6 | `CREATE OR REPLACE` | `DROP TABLE IF EXISTS` + `CREATE` | One statement; plain `CREATE` fails with error 1050. **Not atomic**, and it **fails with error 1451 if a foreign key points at the table.** | Re-runnable migration and demo scripts. | The table holds data you want to keep, or other tables reference it. | `python/create_or_replace/` | 6 |
+| 7 | `IS JSON` | application-side validation | **`IS JSON` needs MariaDB 12.3.1 ([MDEV-37072](https://jira.mariadb.org/browse/MDEV-37072)); on 11.4 we use `CHECK (JSON_VALID(...))`**, which rejects bad documents at `INSERT`. | A `JSON` column must never hold invalid text. | You pin a server older than 12.3 and want the SQL-standard syntax. | `python/json_check/` | 10 |
+| 8 | Invisible columns | A new column that breaks `SELECT *` and column-less `INSERT` | An `INVISIBLE` column leaves both untouched but is usable by name. | Adding a technical column to a table that old code still reads. | New code that should see the column anyway. | `python/invisible_columns/` | 6 |
+| 9 | `ROW` type | One `DECLARE` per column in a procedure | One `ROW` variable; `ROW TYPE OF airlines` takes its shape from the table. | A procedure fetches a whole row. | The procedure needs one or two columns. | `python/row_type/` | 9 |
+| 10 | Instant `ADD` / `DROP` / `MODIFY COLUMN` | Table-copy `ALTER` | **Not covered in this repository.** | — | — | — | — |
+| 11 | Progress reporting | A silent `ALTER TABLE` | The process list reports the statement while `ADD INDEX ... ALGORITHM=INPLACE, LOCK=NONE` runs on 300,000 rows. In our runs it showed the state `altering table` with stage 0/0 and no percentage. | A long `ALTER` runs and you want to know it is alive. | You expect a percentage bar on 11.4; we did not see one. | `python/progress_reporting/` | 10 |
+| 12 | Global temporary tables | Per-session `TEMPORARY TABLE` | **Not available.** `CREATE GLOBAL TEMPORARY TABLE` fails with error 1064 on 11.4 ([MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915)). The demo captures the real error. | — | — | `python/global_temp/` | 3 |
+| 13 | `UPDATE` / `DELETE` from a CTE | Nested `WHERE IN (SELECT ...)` | **`WITH ... UPDATE` needs 12.3; on 11.4 it fails with error 1064.** On 11.4 the same job works with `UPDATE ... JOIN (SELECT ...) AS name`, which also names the filter. | You can run 12.3, or accept the `JOIN` form. | — | `python/cte_update_delete/` | 4 |
+
+Features 7, 12 and 13 are marked for 12.3 on the project page. We pin 11.4,
+so the demos show what works there and record exactly where the 12.3
+feature is needed. Test counts add up to **105**.
 
 ---
 
-## Setup
+## Benchmark
 
-### Prerequisites
+`benchmark.py` measures `INSERT ... RETURNING` against `INSERT` + `SELECT` on
+the real `airlines` table. It runs 5 rounds of 200 operations per approach,
+alternates which approach goes first, and reports mean and standard deviation.
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
-- Python 3.10+
+```bash
+python benchmark.py
+```
 
-### 1. Clone the repository
+Results (Docker `mariadb:11.4` and the Python client on the same laptop):
+
+<!-- BENCHMARK-RESULTS: paste the table printed by `python benchmark.py` here -->
+
+Client and server share one machine, so network latency is close to zero and
+the saving is a **lower bound**. Each saved statement also saves a network
+round trip on a real deployment.
+
+---
+
+## Data model
+
+The demos run on the public [OpenFlights](https://github.com/jpatokal/openflights)
+data (Open Database License), committed in `data/` so nothing is downloaded:
+
+```mermaid
+erDiagram
+    airlines ||--o{ routes : operates
+    airports ||--o{ routes : "source and destination"
+    airlines {
+        INT id PK
+        VARCHAR name
+        VARCHAR country
+    }
+    airports {
+        INT id PK
+        VARCHAR name
+        VARCHAR city
+        VARCHAR country
+        VARCHAR iata
+    }
+    routes {
+        INT id PK
+        INT airline_id FK
+        INT source_airport_id FK
+        INT dest_airport_id FK
+    }
+```
+
+7,698 airports, 6,162 airlines, 66,316 routes.
+
+Why this data: it is real, it has foreign keys (needed to show the
+`CREATE OR REPLACE` limit with error 1451), and it is large enough for the
+benchmark and the `ALTER TABLE` progress demo. `routes.csv` has 67,663 lines;
+`sql/init/12_flight_dataset.sql` loads them through a staging table and keeps
+the 66,316 whose airline and airport ids are numeric and exist, so the
+foreign keys hold.
+
+Each smaller feature uses its own small demo table (`ip_addresses`,
+`connections_old` / `connections_new`, `sessions_old` / `sessions_new`,
+`sequence_auto_a` / `_b`, `invisible_old` / `_new`, `team_members`, ...), so
+no demo changes another's data.
+
+**Schema:** all of it is in [`sql/init/`](sql/init/), 13 files. MariaDB runs
+them in alphabetical order on first start of an empty volume, and the first
+error stops the rest, which is why the files carry number prefixes.
+
+---
+
+## Run it
+
+Requirements: Docker Desktop and Python 3.10+.
 
 ```bash
 git clone https://github.com/tstukalin1/mighty_coders_capstone.git
 cd mighty_coders_capstone
-```
-
-### 2. Configure environment variables
-
-```bash
-cp .env.example .env
-```
-
-The default values in `.env` work out of the box. Edit only if port `3307` is already taken on your machine.
-
-### 3. Start MariaDB
-
-```bash
-docker compose up -d
-```
-
-MariaDB 11.4 will be available at `127.0.0.1:3307`.
-
-To stop it:
-```bash
-docker compose down
-```
-
-To stop and delete all data:
-```bash
-docker compose down -v
-```
-
-> **After pulling new changes that add init scripts** (new tables, datasets), recreate the volume so MariaDB re-runs all scripts:
-> ```bash
-> docker compose down -v && docker compose up -d
-> ```
-> All data is loaded from `sql/init/` automatically, so nothing is lost.
-
-### 4. Set up Python environment
-
-```bash
-python -m venv .venv
-```
-
-Activate it:
-
-```bash
-# macOS / Linux
-source .venv/bin/activate
-
-# Windows
-.venv\Scripts\activate
-```
-
-Install dependencies:
-
-```bash
+cp .env.example .env                  # defaults work; change DB_PORT if 3307 is taken
+docker compose up -d                  # MariaDB 11.4, loads sql/init/ and the data (about a minute)
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+python db.py                          # prints: Connected! MariaDB version: 11.4.x
+pytest                                # 105 passed
+python python/returning/after.py      # run any demo; see python/README.md for the full list
+python benchmark.py                   # RETURNING benchmark
 ```
 
-### 5. Test the connection
+To start again from clean data: `docker compose down -v && docker compose up -d`.
+Every demo creates its own tables and most drop them again, so you can run any
+demo more than once.
 
-```bash
-python db.py
-```
+---
 
-Expected output:
-```
-Connected! MariaDB version: 11.4.x-MariaDB-...
-```
+## Repository layout
+
+| Path | What it holds |
+|---|---|
+| `sql/init/` | The schema and data: 13 numbered SQL files |
+| `data/` | OpenFlights CSV files |
+| `python/<feature>/` | `before.py` and `after.py` for each feature ([index](python/README.md)) |
+| `tests/` | 105 pytest tests; `conftest.py` gives each test one connection and rolls back |
+| `benchmark.py` | `RETURNING` benchmark with repeated runs |
+| `.github/workflows/tests.yml` | CI: starts MariaDB 11.4 and runs `pytest` on every push and pull request |
+| `db.py` | Connection helper; reads credentials from `.env` |
+
+The credentials in `.env.example` are local demo values for a throwaway
+container, not secrets. All values reach the server through query parameters.
+
+---
+
+## Who did what
+
+| Member | Work (from the git history) |
+|---|---|
+| Yosief Gebrewahid Kidane | `CREATE OR REPLACE`, `RETURNING`, `CREATE SEQUENCE`, invisible columns, global temporary tables (limit), the OpenFlights dataset (`12_flight_dataset.sql`) and `benchmark.py`, the final `ROW` type and progress-reporting demos and tests, the `ip_addresses` before/after demo and tests, and the test fixture shared by all tests |
+| Timofey Stukalin | `UUID`, `INTERSECT` / `EXCEPT`, CTE `UPDATE` / `DELETE`, `IS JSON` check (`02_isjson_check.sql`, `test_products.py`), `INET` before/after (`03_inet.sql`, `python/inet/`), first versions of `docker-compose.yml` and `db.py` |
+| Dinu Panackal Devassia | `INET4` / `INET6` table and data (`01_inet.sql`); early drafts of the `ROW` type and progress reporting, replaced by the final versions above |
+
+The full history, with every pull request and review, is in the repository.

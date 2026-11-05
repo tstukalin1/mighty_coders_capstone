@@ -38,7 +38,7 @@ def monitor(stop_event, samples):
                     "SELECT ID, TIME, STATE, STAGE, MAX_STAGE, PROGRESS"
                     " FROM information_schema.PROCESSLIST"
                     " WHERE ID <> CONNECTION_ID() AND INFO LIKE %s",
-                    (f"ALTER TABLE {TABLE}%",),
+                    ("ALTER TABLE progress_demo_new%",),
                 )
                 for row in cur.fetchall():
                     samples.append(row)
@@ -54,14 +54,14 @@ def timed_lookup(cur):
     times = []
     for _ in range(RUNS):
         start = time.perf_counter()
-        cur.execute(f"SELECT COUNT(*) FROM {TABLE} WHERE name = %s", (SEARCH_VALUE,))
+        cur.execute("SELECT COUNT(*) FROM progress_demo_new WHERE name = %s", (SEARCH_VALUE,))
         cur.fetchone()
         times.append((time.perf_counter() - start) * 1000)
     return sum(times) / len(times)
 
 
 def access_type(cur):
-    cur.execute(f"EXPLAIN SELECT COUNT(*) FROM {TABLE} WHERE name = %s", (SEARCH_VALUE,))
+    cur.execute("EXPLAIN SELECT COUNT(*) FROM progress_demo_new WHERE name = %s", (SEARCH_VALUE,))
     return cur.fetchone()[3]
 
 
@@ -72,12 +72,12 @@ def main():
     watcher = threading.Thread(target=monitor, args=(stop_event, samples), daemon=True)
     try:
         with conn.cursor() as cur:
-            cur.execute(f"DROP TABLE IF EXISTS {TABLE}")
-            cur.execute(f"CREATE TABLE {TABLE} ("
+            cur.execute("DROP TABLE IF EXISTS progress_demo_new")
+            cur.execute("CREATE TABLE progress_demo_new ("
                         " id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(200))")
-            cur.execute(f"INSERT INTO {TABLE} (name)"
+            cur.execute("INSERT INTO progress_demo_new (name)"
                         " SELECT a.name FROM airlines a JOIN seq_1_to_50 s")
-            cur.execute(f"SELECT COUNT(*) FROM {TABLE}")
+            cur.execute("SELECT COUNT(*) FROM progress_demo_new")
             rows = cur.fetchone()[0]
 
             print("[after.py] ALTER TABLE with progress reporting")
@@ -87,7 +87,7 @@ def main():
 
             watcher.start()
             start = time.perf_counter()
-            cur.execute(f"ALTER TABLE {TABLE} ADD INDEX idx_name (name),"
+            cur.execute("ALTER TABLE progress_demo_new ADD INDEX idx_name (name),"
                         " ALGORITHM=INPLACE, LOCK=NONE")
             elapsed = time.perf_counter() - start
             stop_event.set()
@@ -103,10 +103,10 @@ def main():
             if before_ms > 0:
                 print(f"  lookup time change   : {(before_ms - after_ms) / before_ms * 100:.1f}% faster")
 
-            cur.execute(f"CHECK TABLE {TABLE}")
+            cur.execute("CHECK TABLE progress_demo_new")
             print(f"  CHECK TABLE          : {cur.fetchall()[-1][3]}")
 
-            cur.execute(f"DROP TABLE IF EXISTS {TABLE}")
+            cur.execute("DROP TABLE IF EXISTS progress_demo_new")
     finally:
         stop_event.set()
         conn.close()

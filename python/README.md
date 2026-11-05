@@ -1,85 +1,23 @@
-# IS JSON CHECK + INSERT RETURNING
+# Demo index
 
-Демонстрация двух фич MariaDB: валидации JSON через `CHECK` и возврата данных через `RETURNING`.
+One folder per feature. Each has `before.py` (the old way) and `after.py` (with
+the MariaDB feature). Start the database first (`docker compose up -d`, see the
+[main README](../README.md)), then run from the repository root.
 
----
+| Feature | Init script | Run | What you will see |
+|---|---|---|---|
+| `INET4` / `INET6` | `01_inet.sql`, `03_inet.sql` | `python python/ip_addresses/after.py`<br>`python python/inet/after.py` | Numeric sort, 4-byte storage, error 1292 for invalid addresses |
+| `UUID` | `04_uuid.sql` | `python python/uuid_type/after.py` | 16 bytes, invalid values rejected, `DEFAULT UUID()` |
+| `RETURNING` | `11_create_or_replace_returning.sql`, `12_flight_dataset.sql` | `python python/returning/after.py`<br>`python python/flight_returning/after.py` | Row back from `INSERT` / `DELETE` in one statement |
+| `CREATE SEQUENCE` | `06_sequence.sql` | `python python/sequence/after.py` | One counter shared by two tables |
+| `INTERSECT` / `EXCEPT` | `05_intersect_except.sql` | `python python/intersect_except/after.py` | Set operations on real routes |
+| `CREATE OR REPLACE` | `11_create_or_replace_returning.sql` | `python python/create_or_replace/after.py` | Re-runnable script; error 1451 under a foreign key |
+| JSON check | `02_isjson_check.sql` | `python python/json_check/after.py` | `CHECK (JSON_VALID(...))` rejects bad JSON (`IS JSON` needs 12.3.1) |
+| Invisible columns | `08_invisible_columns.sql` | `python python/invisible_columns/after.py` | `SELECT *` and column-less `INSERT` unchanged |
+| `ROW` type | `09_row_type.sql` | `python python/row_type/after.py` | One variable for a whole row, `ROW TYPE OF` |
+| Progress reporting | `13_progress_reporting.sql` | `python python/progress_reporting/after.py` | Process list watched from a second connection |
+| Global temporary tables | `10_global_temp_tables.sql` | `python python/global_temp/after.py` | The real error 1064 (not available on 11.4) |
+| `UPDATE` / `DELETE` from a CTE | `07_cte_update_delete.sql` | `python python/cte_update_delete/after.py` | Error 1064 for `WITH ... UPDATE` on 11.4; the `JOIN` form that works |
 
-## 1. IS JSON CHECK constraint
-
-**Файл:** `sql/init/02_isjson_check.sql`
-
-```sql
-CREATE TABLE products (
-    id       INT          AUTO_INCREMENT PRIMARY KEY,
-    name     VARCHAR(100) NOT NULL,
-    metadata JSON         NOT NULL,
-    CONSTRAINT chk_metadata_is_json CHECK (metadata IS JSON)
-);
-```
-
-`CHECK (metadata IS JSON)` — это ограничение уровня таблицы. MariaDB отклонит
-любой `INSERT` или `UPDATE`, если значение в колонке `metadata` не является
-валидным JSON-документом.
-
-**Пример ошибки:**
-```sql
-INSERT INTO products (name, metadata) VALUES ('Bad', 'not-json');
--- ERROR 4025 (23000): CONSTRAINT `chk_metadata_is_json` failed
-```
-
-> Требуется MariaDB 10.6+ для полной поддержки `IS JSON`.
-
----
-
-## 2. INSERT + SELECT (before.py)
-
-**Файл:** `python/before.py`
-
-Классический подход: после `INSERT` делаем отдельный `SELECT` по `lastrowid`.
-
-```python
-cur.execute("INSERT INTO products (name, metadata) VALUES (%s, %s)", (...))
-inserted_id = cur.lastrowid
-cur.execute("SELECT id, name, metadata FROM products WHERE id = %s", (inserted_id,))
-row = cur.fetchone()
-```
-
-**Недостатки:**
-- Два round-trip к базе данных
-- Возможна гонка данных в конкурентной среде (между INSERT и SELECT)
-
----
-
-## 3. INSERT ... RETURNING (after.py)
-
-**Файл:** `python/after.py`
-
-`RETURNING` возвращает данные вставленной строки прямо в ответе на `INSERT`.
-
-```python
-cur.execute(
-    "INSERT INTO products (name, metadata) VALUES (%s, %s) RETURNING id, name, metadata",
-    (...)
-)
-row = cur.fetchone()
-```
-
-**Преимущества:**
-- Один round-trip к базе данных
-- Атомарно: нет гонки данных
-- Можно возвращать любые колонки, включая вычисляемые
-
-> Требуется MariaDB 10.5+. Поддерживается также `UPDATE ... RETURNING` и `DELETE ... RETURNING`.
-
----
-
-## Запуск
-
-```bash
-# Убедитесь, что контейнер запущен
-docker compose up -d
-
-# Запуск примеров
-python python/before.py
-python python/after.py
-```
+Run a `before.py` the same way to see the old approach. Benchmark:
+`python benchmark.py` from the repository root.
