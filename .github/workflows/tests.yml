@@ -30,7 +30,7 @@ jobs:
           python - <<'PY'
           import time, pymysql, os
           from dotenv import load_dotenv
-          load_dotenv()
+          load_dotenv(".env")
           for attempt in range(120):
               try:
                   c = pymysql.connect(host="127.0.0.1", port=int(os.getenv("DB_PORT")),
