@@ -46,7 +46,7 @@ class TestInsertReturning:
     def test_returns_inserted_columns(self, conn, table):
         with conn.cursor() as cur:
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) "
+                "INSERT INTO returning_pytest (name, matriculation_number, age) "
                 "VALUES (%s, %s, %s) RETURNING id, name, age",
                 ("Anna", "1", 23),
             )
@@ -57,13 +57,13 @@ class TestInsertReturning:
     def test_returning_matches_classic_insert_then_select(self, conn, table):
         with conn.cursor() as cur:
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) VALUES (%s, %s, %s)",
+                "INSERT INTO returning_pytest (name, matriculation_number, age) VALUES (%s, %s, %s)",
                 ("Classic", "1", 23),
             )
-            cur.execute(f"SELECT name, age FROM {table} WHERE id = %s", (cur.lastrowid,))
+            cur.execute("SELECT name, age FROM returning_pytest WHERE id = %s", (cur.lastrowid,))
             classic = cur.fetchone()
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) "
+                "INSERT INTO returning_pytest (name, matriculation_number, age) "
                 "VALUES (%s, %s, %s) RETURNING name, age",
                 ("Classic", "2", 23),
             )
@@ -73,7 +73,7 @@ class TestInsertReturning:
     def test_returning_can_compute_expressions(self, conn, table):
         with conn.cursor() as cur:
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) "
+                "INSERT INTO returning_pytest (name, matriculation_number, age) "
                 "VALUES (%s, %s, %s) RETURNING age, age + 1 AS age_next_year",
                 ("Anna", "1", 23),
             )
@@ -83,7 +83,7 @@ class TestInsertReturning:
     def test_returning_star_returns_every_column(self, conn, table):
         with conn.cursor() as cur:
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) "
+                "INSERT INTO returning_pytest (name, matriculation_number, age) "
                 "VALUES (%s, %s, %s) RETURNING *",
                 ("Anna", "1", 23),
             )
@@ -93,7 +93,7 @@ class TestInsertReturning:
     def test_multi_row_insert_returns_all_rows(self, conn, table):
         with conn.cursor() as cur:
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) "
+                "INSERT INTO returning_pytest (name, matriculation_number, age) "
                 "VALUES (%s, %s, %s), (%s, %s, %s) RETURNING name",
                 ("Anna", "1", 23, "Berhe", "2", 24),
             )
@@ -103,13 +103,13 @@ class TestInsertReturning:
     def test_second_insert_does_not_return_first_row(self, conn, table):
         with conn.cursor() as cur:
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) "
+                "INSERT INTO returning_pytest (name, matriculation_number, age) "
                 "VALUES (%s, %s, %s) RETURNING name",
                 ("Anna", "1", 23),
             )
             cur.fetchall()
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) "
+                "INSERT INTO returning_pytest (name, matriculation_number, age) "
                 "VALUES (%s, %s, %s) RETURNING name",
                 ("Berhe", "2", 24),
             )
@@ -121,12 +121,12 @@ class TestDeleteReturning:
     def test_delete_returns_deleted_rows(self, conn, table):
         with conn.cursor() as cur:
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) "
+                "INSERT INTO returning_pytest (name, matriculation_number, age) "
                 "VALUES (%s, %s, %s), (%s, %s, %s)",
                 ("Anna", "1", 23, "Berhe", "2", 24),
             )
             cur.execute(
-                f"DELETE FROM {table} WHERE matriculation_number IN (%s, %s) RETURNING name",
+                "DELETE FROM returning_pytest WHERE matriculation_number IN (%s, %s) RETURNING name",
                 ("1", "2"),
             )
             rows = cur.fetchall()
@@ -135,12 +135,12 @@ class TestDeleteReturning:
     def test_deleted_rows_are_gone(self, conn, table):
         with conn.cursor() as cur:
             cur.execute(
-                f"INSERT INTO {table} (name, matriculation_number, age) VALUES (%s, %s, %s)",
+                "INSERT INTO returning_pytest (name, matriculation_number, age) VALUES (%s, %s, %s)",
                 ("Anna", "1", 23),
             )
-            cur.execute(f"DELETE FROM {table} WHERE matriculation_number = %s RETURNING id", ("1",))
+            cur.execute("DELETE FROM returning_pytest WHERE matriculation_number = %s RETURNING id", ("1",))
             cur.fetchall()
-            cur.execute(f"SELECT COUNT(*) FROM {table}")
+            cur.execute("SELECT COUNT(*) FROM returning_pytest")
             assert cur.fetchone()[0] == 0
 
 
@@ -152,5 +152,5 @@ class TestUpdateReturningLimit:
             if major >= 13:
                 pytest.skip("UPDATE ... RETURNING is available from MariaDB 13.0")
             with pytest.raises(pymysql.err.ProgrammingError) as exc_info:
-                cur.execute(f"UPDATE {table} SET age = age + 1 RETURNING id")
+                cur.execute("UPDATE returning_pytest SET age = age + 1 RETURNING id")
         assert exc_info.value.args[0] == 1064

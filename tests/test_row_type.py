@@ -72,8 +72,10 @@ def call(cur, sql):
 def procedures(conn):
     def drop_all():
         with conn.cursor() as cur:
-            for name in PROCS:
-                cur.execute(f"DROP PROCEDURE IF EXISTS {name}")
+            cur.execute("DROP PROCEDURE IF EXISTS test_rt_old")
+            cur.execute("DROP PROCEDURE IF EXISTS test_rt_type_of")
+            cur.execute("DROP PROCEDURE IF EXISTS test_rt_set_field")
+            cur.execute("DROP PROCEDURE IF EXISTS test_rt_wrong_count")
 
     drop_all()
     with conn.cursor() as cur:
