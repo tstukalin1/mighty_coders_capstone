@@ -137,24 +137,91 @@ error stops the rest, which is why the files carry number prefixes.
 
 ## Run it
 
-Requirements: Docker Desktop and Python 3.10+.
+Requirements: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+installed and running, and Python 3.10 or newer.
+
+1. Clone the repository and go into it:
+
+   ```bash
+   git clone https://github.com/tstukalin1/mighty_coders_capstone.git
+   cd mighty_coders_capstone
+   ```
+
+2. Create the environment file. The defaults work as they are; change
+   `DB_PORT` only if port 3307 is already taken on your machine:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Start MariaDB 11.4. On first start it runs every file in `sql/init/` and
+   loads the OpenFlights data, which takes about a minute:
+
+   ```bash
+   docker compose up -d
+   ```
+
+4. Create a Python virtual environment:
+
+   ```bash
+   python -m venv .venv
+   ```
+
+5. Activate it:
+
+   ```bash
+   source .venv/bin/activate        # macOS / Linux
+   .venv\Scripts\activate           # Windows
+   ```
+
+6. Install the dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+7. Check the connection. Expected output: `Connected! MariaDB version: 11.4.x-MariaDB-...`
+
+   ```bash
+   python db.py
+   ```
+
+8. Run the tests. Expected output: `105 passed`:
+
+   ```bash
+   pytest
+   ```
+
+9. Run a demo. Every feature has a `before.py` and an `after.py`; the
+   [demo index](python/README.md) lists all of them:
+
+   ```bash
+   python python/returning/before.py
+   python python/returning/after.py
+   ```
+
+10. Run the benchmark (see [Benchmark](#benchmark)):
+
+    ```bash
+    python benchmark.py
+    ```
+
+**Start again from clean data:** this deletes the database volume and rebuilds
+it from `sql/init/`:
 
 ```bash
-git clone https://github.com/tstukalin1/mighty_coders_capstone.git
-cd mighty_coders_capstone
-cp .env.example .env                  # defaults work; change DB_PORT if 3307 is taken
-docker compose up -d                  # MariaDB 11.4, loads sql/init/ and the data (about a minute)
-python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python db.py                          # prints: Connected! MariaDB version: 11.4.x
-pytest                                # 105 passed
-python python/returning/after.py      # run any demo; see python/README.md for the full list
-python benchmark.py                   # RETURNING benchmark
+docker compose down -v
+docker compose up -d
 ```
 
-To start again from clean data: `docker compose down -v && docker compose up -d`.
-Every demo creates its own tables and most drop them again, so you can run any
-demo more than once.
+**Stop the database** (keeping the data):
+
+```bash
+docker compose down
+```
+
+Every demo creates its own tables and most drop them again, so you can run
+any demo more than once.
 
 ---
 
