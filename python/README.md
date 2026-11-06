@@ -15,6 +15,7 @@ the MariaDB feature). Start the database first (`docker compose up -d`, see the
 | JSON check | `02_isjson_check.sql` | `python python/json_check/after.py` | `CHECK (JSON_VALID(...))` rejects bad JSON (`IS JSON` needs 12.3.1) |
 | Invisible columns | `08_invisible_columns.sql` | `python python/invisible_columns/after.py` | `SELECT *` and column-less `INSERT` unchanged |
 | `ROW` type | `09_row_type.sql` | `python python/row_type/after.py` | One variable for a whole row, `ROW TYPE OF` |
+| Instant `ALTER` | `14_instant_alter.sql` | `python python/instant_alter/before.py`<br>`python python/instant_alter/after.py` | `COPY` rebuild time vs `INSTANT` (a few ms), error 1846 for a type change |
 | Progress reporting | `13_progress_reporting.sql` | `python python/progress_reporting/after.py` | Process list watched from a second connection |
 | Global temporary tables | `10_global_temp_tables.sql` | `python python/global_temp/after.py` | The real error 1064 (not available on 11.4) |
 | `UPDATE` / `DELETE` from a CTE | `07_cte_update_delete.sql` | `python python/cte_update_delete/after.py` | Error 1064 for `WITH ... UPDATE` on 11.4; the `JOIN` form that works |

@@ -26,7 +26,7 @@ Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
 | 7 | `IS JSON` | application-side validation | **`IS JSON` needs MariaDB 12.3.1 ([MDEV-37072](https://jira.mariadb.org/browse/MDEV-37072)); on 11.4 we use `CHECK (JSON_VALID(...))`**, which rejects bad documents at `INSERT`. | A `JSON` column must never hold invalid text. | You pin a server older than 12.3 and want the SQL-standard syntax. | `python/json_check/` | 10 |
 | 8 | Invisible columns | A new column that breaks `SELECT *` and column-less `INSERT` | An `INVISIBLE` column leaves both untouched but is usable by name. | Adding a technical column to a table that old code still reads. | New code that should see the column anyway. | `python/invisible_columns/` | 6 |
 | 9 | `ROW` type | One `DECLARE` per column in a procedure | One `ROW` variable; `ROW TYPE OF airlines` takes its shape from the table. | A procedure fetches a whole row. | The procedure needs one or two columns. | `python/row_type/` | 9 |
-| 10 | Instant `ADD` / `DROP` / `MODIFY COLUMN` | Table-copy `ALTER` | **Not covered in this repository.** | — | — | — | — |
+| 10 | Instant `ADD` / `DROP` / `MODIFY COLUMN` | Table-copy `ALTER` | `ALGORITHM=INSTANT` changes only the definition: on 308,100 rows it took 3.7 ms against 183.7 ms for `ALGORITHM=COPY` (49x) (see [benchmark](#benchmark)), and the copy grows with the table. A type change is refused with error 1846 instead of silently copying. | A column is added, dropped or widened on a large, busy table. | The change is a type change (it cannot be instant), or the table is small enough that a copy does not matter. | `python/instant_alter/` | 6 |
 | 11 | Progress reporting | A silent `ALTER TABLE` | The process list reports the statement while `ADD INDEX ... ALGORITHM=INPLACE, LOCK=NONE` runs on 300,000 rows. The demo's monitor prints what a second connection sees; in our runs on 11.4 that was state `altering table`, stage 0/0 and no percentage. | A long `ALTER` runs and you want to know it is alive. | You expect a percentage bar on 11.4; we did not see one. | `python/progress_reporting/` | 10 |
 | 12 | Global temporary tables | Per-session `TEMPORARY TABLE` | **Not available.** `CREATE GLOBAL TEMPORARY TABLE` fails with error 1064 on 11.4 ([MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915)). The demo captures the real error. | — | — | `python/global_temp/` | 3 |
 | 13 | `UPDATE` / `DELETE` from a CTE | Nested `WHERE IN (SELECT ...)` | **`WITH ... UPDATE` needs 12.3; on 11.4 it fails with error 1064.** On 11.4 the same job works with `UPDATE ... JOIN (SELECT ...) AS name`, which also names the filter. | You can run 12.3, or accept the `JOIN` form. | The filter is a plain condition on the same table: `UPDATE ... WHERE` is shorter. | `python/cte_update_delete/` | 4 |
@@ -35,13 +35,13 @@ Features 12 and 13 are marked for 12.3 on the project page, and `IS JSON` (7)
 also arrived in 12.3.1. We pin 11.4, so the demos show what works there and
 record exactly where a newer server is needed. Global temporary tables are not
 in 12.3 either: [MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915) is
-still open and targets 13.3. Test counts add up to **105**.
+still open and targets 13.3. Test counts add up to **111**.
 
 ---
 
 ## Benchmark
 
-`benchmark.py` makes two measurements:
+`benchmark.py` makes three measurements:
 
 1. **Statements and time saved.** `INSERT ... RETURNING` against `INSERT` + `SELECT`
    on the real `airlines` table: 5 rounds of 200 operations per approach, the
@@ -50,21 +50,24 @@ still open and targets 13.3. Test counts add up to **105**.
    and as `CHAR(36)` against `UUID`, each table with an `INT` primary key and an
    index on the value. Table size (data + index) comes from
    `information_schema.tables` after `ANALYZE TABLE`.
+3. **Migration time.** `ADD COLUMN` with `ALGORITHM=COPY` against
+   `ALGORITHM=INSTANT` on about 300,000 rows (the airlines repeated 50 times),
+   5 rounds, order alternating, mean and standard deviation reported.
 
 ```bash
 python benchmark.py
 ```
 
-Results from one run on a MacBook Air (Python 3.14, Docker `mariadb:11.4`, client and server on the same machine):
+Results from one run on a MacBook Air (Docker `mariadb:11.4`, client and server on the same machine):
 
 **`RETURNING` against `INSERT` + `SELECT`** (200 operations per round, 5 rounds, order alternated):
 
 | Approach | Statements per operation | Mean per operation | Std dev |
 |---|---|---|---|
-| `INSERT` + `SELECT` (old way) | 2 | 0.279 ms | 0.052 ms |
-| `INSERT ... RETURNING` | 1 | 0.158 ms | 0.011 ms |
+| `INSERT` + `SELECT` (old way) | 2 | 0.323 ms | 0.019 ms |
+| `INSERT ... RETURNING` | 1 | 0.185 ms | 0.005 ms |
 
-`RETURNING` was 43.3% faster per operation and sent half as many statements.
+`RETURNING` was 42.6% faster per operation and sent half as many statements.
 
 **Storage** for 100,000 rows (`id` + value + index on the value):
 
@@ -75,14 +78,59 @@ Results from one run on a MacBook Air (Python 3.14, Docker `mariadb:11.4`, clien
 | `CHAR(36)` | 12.03 MB | |
 | `UUID` | 8.03 MB | 33.2% |
 
+**Migration time:** `ADD COLUMN` on 308,100 rows (5 rounds, order alternated):
+
+| Algorithm | Mean | Std dev |
+|---|---|---|
+| `ALGORITHM=COPY` (old way: the table is rebuilt) | 183.7 ms | 3.2 ms |
+| `ALGORITHM=INSTANT` | 3.7 ms | 1.8 ms |
+
+`INSTANT` was 49x faster. A copy rewrites every row, so its time grows with
+the table; an instant change only rewrites the definition.
+
 Timings will differ on another machine, so run `python benchmark.py` to
 reproduce them; the statement counts and the storage sizes should match.
+The numbers above come from one run of `python benchmark.py`.
 
 Client and server share one machine, so network latency is close to zero and
 the `RETURNING` saving is a **lower bound**: each saved statement also saves a
 network round trip on a real deployment. The storage figures include the
 primary key, so the saving on the value column alone is larger than the table
 percentage.
+
+---
+
+## Examples to paste into your own schema
+
+Each block runs on its own in an empty database on MariaDB 11.4. They are
+short versions of the demos in `python/` and the scripts in `sql/init/`.
+
+```sql
+-- 1. RETURNING: get the new row back from the INSERT itself (no second SELECT)
+CREATE TABLE customers (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100));
+INSERT INTO customers (name) VALUES ('Ada') RETURNING id, name;
+
+-- 2. INET4: addresses that sort as numbers and reject bad input
+CREATE TABLE visits (ip INET4 NOT NULL);
+INSERT INTO visits VALUES ('192.168.1.10'), ('8.8.8.8'), ('10.0.0.1');
+SELECT ip FROM visits ORDER BY ip;   -- 8.8.8.8, 10.0.0.1, 192.168.1.10
+
+-- 3. Invisible column: SELECT * and INSERT without a column list keep working
+ALTER TABLE customers ADD COLUMN created_at TIMESTAMP INVISIBLE DEFAULT CURRENT_TIMESTAMP;
+INSERT INTO customers VALUES (NULL, 'Bob');   -- the old INSERT still works
+SELECT * FROM customers;                      -- still only id, name
+SELECT name, created_at FROM customers;       -- visible when named
+
+-- 4. One sequence shared by two tables
+CREATE SEQUENCE order_no START WITH 1000;
+CREATE TABLE web_orders  (no INT PRIMARY KEY DEFAULT (NEXT VALUE FOR order_no), item VARCHAR(50));
+CREATE TABLE shop_orders (no INT PRIMARY KEY DEFAULT (NEXT VALUE FOR order_no), item VARCHAR(50));
+INSERT INTO web_orders  (item) VALUES ('book');   -- no = 1000
+INSERT INTO shop_orders (item) VALUES ('pen');    -- no = 1001
+
+-- 5. Instant ADD COLUMN: an error instead of a silent table copy if it cannot be instant
+ALTER TABLE customers ADD COLUMN email VARCHAR(150), ALGORITHM=INSTANT;
+```
 
 ---
 
@@ -131,7 +179,7 @@ Each smaller feature uses its own small demo table (`ip_addresses`,
 `sequence_auto_a` / `_b`, `invisible_old` / `_new`, `team_members`, ...), so
 no demo changes another's data.
 
-**Schema:** all of it is in [`sql/init/`](sql/init/), 13 files. MariaDB runs
+**Schema:** all of it is in [`sql/init/`](sql/init/), 14 files. MariaDB runs
 them in alphabetical order on first start of an empty volume, and the first
 error stops the rest, which is why the files carry number prefixes.
 
@@ -140,7 +188,7 @@ error stops the rest, which is why the files carry number prefixes.
 ## Run it
 
 Requirements: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-installed and running, and Python 3.10 or newer.
+installed and running, and Python 3.9 or newer.
 
 1. Clone the repository and go into it:
 
@@ -188,7 +236,7 @@ installed and running, and Python 3.10 or newer.
    python db.py
    ```
 
-8. Run the tests. Expected output: `105 passed`:
+8. Run the tests. Expected output: `111 passed`:
 
    ```bash
    pytest
@@ -231,11 +279,11 @@ any demo more than once.
 
 | Path | What it holds |
 |---|---|
-| `sql/init/` | The schema and data: 13 numbered SQL files |
+| `sql/init/` | The schema and data: 14 numbered SQL files |
 | `data/` | OpenFlights CSV files |
 | `python/<feature>/` | `before.py` and `after.py` for each feature ([index](python/README.md)) |
-| `tests/` | 105 pytest tests; `conftest.py` gives each test one connection and rolls back |
-| `benchmark.py` | `RETURNING` benchmark with repeated runs |
+| `tests/` | 111 pytest tests; `conftest.py` gives each test one connection and rolls back |
+| `benchmark.py` | Statements, bytes and migration time, with repeated runs |
 | `.github/workflows/tests.yml` | CI: starts MariaDB 11.4 and runs `pytest` on every push and pull request |
 | `db.py` | Connection helper; reads credentials from `.env` |
 
@@ -244,11 +292,25 @@ container, not secrets. All values reach the server through query parameters.
 
 ---
 
+## How it was made
+
+- **Method.** For every feature we wrote the same job twice, `before.py` and
+  `after.py`, and checked each claim in this README with a pytest test against
+  the real server. Where a feature turned out not to work on 11.4, we kept the
+  demo and recorded the real error and the version that adds it.
+- **Measurements.** `benchmark.py` repeats every timing in several rounds with
+  alternating order and reports the spread; storage comes from the server's own
+  `information_schema`.
+- **Checks.** CI starts a fresh MariaDB 11.4 from `sql/init/` and runs all tests
+  on every push and pull request, so the setup above is tested from zero.
+
+---
+
 ## Who did what
 
 | Member | Work (from the git history) |
 |---|---|
-| Yosief Gebrewahid Kidane | `CREATE OR REPLACE`, `RETURNING`, `CREATE SEQUENCE`, invisible columns, global temporary tables (limit), the OpenFlights dataset (`12_flight_dataset.sql`) and `benchmark.py`, the final `ROW` type and progress-reporting demos and tests, the `ip_addresses` before/after demo and tests, and the test fixture shared by all tests |
+| Yosief Gebrewahid Kidane | Instant `ALTER` (`14_instant_alter.sql`, demos, tests, migration benchmark), `CREATE OR REPLACE`, `RETURNING`, `CREATE SEQUENCE`, invisible columns, global temporary tables (limit), the OpenFlights dataset (`12_flight_dataset.sql`) and `benchmark.py`, the final `ROW` type and progress-reporting demos and tests, the `ip_addresses` before/after demo and tests, and the test fixture shared by all tests |
 | Timofey Stukalin | `UUID`, `INTERSECT` / `EXCEPT`, CTE `UPDATE` / `DELETE`, `IS JSON` check (`02_isjson_check.sql`, `test_products.py`), `INET` before/after (`03_inet.sql`, `python/inet/`), first versions of `docker-compose.yml` and `db.py` |
 | Dinu Panackal Devassia | `INET4` / `INET6` table and data (`01_inet.sql`); early drafts of the `ROW` type and progress reporting, replaced by the final versions above |
 
