@@ -24,9 +24,9 @@ def main():
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute(f"DROP PROCEDURE IF EXISTS {PROC}")
+            cur.execute("DROP PROCEDURE IF EXISTS demo_airline_old")
             cur.execute(
-                f"CREATE PROCEDURE {PROC}(IN p_id INT) "
+                "CREATE PROCEDURE demo_airline_old(IN p_id INT) "
                 "BEGIN "
                 "  DECLARE v_id INT; "
                 "  DECLARE v_name VARCHAR(200); "
@@ -39,7 +39,7 @@ def main():
                 "         v_country AS country, v_active AS active; "
                 "END"
             )
-            cur.execute(f"CALL {PROC}(2)")
+            cur.execute("CALL demo_airline_old(2)")
             row = cur.fetchone()
             while cur.nextset():
                 pass
@@ -50,7 +50,7 @@ def main():
             print(f"  result for id 2    : {row}")
             print("  add a column -> edit DECLARE, INTO and SELECT in the procedure")
 
-            cur.execute(f"DROP PROCEDURE IF EXISTS {PROC}")
+            cur.execute("DROP PROCEDURE IF EXISTS demo_airline_old")
     finally:
         conn.close()
 

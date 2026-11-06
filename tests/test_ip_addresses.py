@@ -1,7 +1,7 @@
 """
 test_ip_addresses.py -- tests for sql/init/01_inet.sql (INET4 / INET6)
 
-One test group per item of the "What I learned" list in readme_inet.md:
+One test group per aspect of INET4 / INET6 that the demo covers:
   * creating INET4 and INET6 columns
   * storing IPv4 and IPv6 addresses
   * validating IP addresses

@@ -6,5 +6,5 @@ CREATE TABLE IF NOT EXISTS products (
     id       INT          AUTO_INCREMENT PRIMARY KEY,
     name     VARCHAR(100) NOT NULL,
     metadata JSON         NOT NULL,
-    CONSTRAINT chk_metadata_is_json CHECK (JSON_VALID(metadata))
+    CONSTRAINT chk_metadata_json_valid CHECK (JSON_VALID(metadata))
 );
