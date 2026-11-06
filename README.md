@@ -108,7 +108,7 @@ error stops the rest, which is why the files carry number prefixes.
 ## Run it
 
 Requirements: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-installed and running, and Python 3.12 or newer (tested with 3.12, 3.13 and 3.14).
+installed and running, and Python 3.12 or newer (tested with 3.12 and 3.14).
 
 1. Clone the repository and go into it:
 
@@ -258,7 +258,7 @@ percentage.
 
 ## Examples to paste into your own schema
 
-Each block runs on its own in an empty database on MariaDB 11.4. They are
+Run the blocks in order in an empty database (blocks 3 and 5 use the `customers` table from block 1). They are
 short versions of the demos in `python/` and the scripts in `sql/init/`.
 
 ```sql
