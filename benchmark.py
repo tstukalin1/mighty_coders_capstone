@@ -1,7 +1,13 @@
 """
 benchmark.py -- RETURNING vs. the old way (INSERT + SELECT), measured properly
 
-Question: how much does INSERT ... RETURNING save over INSERT followed by a
+Two measurements:
+  1. Statements and time saved: INSERT ... RETURNING vs INSERT + SELECT.
+  2. Bytes saved: the same 100,000 values stored as VARCHAR(45) vs INET4 and as
+     CHAR(36) vs UUID, each with a primary key and an index on the value
+     (table size = data + index, from information_schema after ANALYZE TABLE).
+
+Question 1: how much does INSERT ... RETURNING save over INSERT followed by a
 separate SELECT to read the row back?
 
 Method (so the numbers can be reproduced on another machine):
@@ -57,6 +63,63 @@ def cleanup(cur):
     cur.execute("DELETE FROM airlines WHERE id >= 500000")
 
 
+STORAGE_ROWS = 100_000
+
+# (table, CREATE, ANALYZE, DROP) written out as literal statements
+STORAGE_TABLES = [
+    ("bench_ip_text",
+     "CREATE TABLE bench_ip_text (id INT AUTO_INCREMENT PRIMARY KEY,"
+     " ip VARCHAR(45), KEY idx_value (ip))",
+     "ANALYZE TABLE bench_ip_text", "DROP TABLE IF EXISTS bench_ip_text"),
+    ("bench_ip_inet",
+     "CREATE TABLE bench_ip_inet (id INT AUTO_INCREMENT PRIMARY KEY,"
+     " ip INET4, KEY idx_value (ip))",
+     "ANALYZE TABLE bench_ip_inet", "DROP TABLE IF EXISTS bench_ip_inet"),
+    ("bench_uuid_text",
+     "CREATE TABLE bench_uuid_text (id INT AUTO_INCREMENT PRIMARY KEY,"
+     " u CHAR(36), KEY idx_value (u))",
+     "ANALYZE TABLE bench_uuid_text", "DROP TABLE IF EXISTS bench_uuid_text"),
+    ("bench_uuid_native",
+     "CREATE TABLE bench_uuid_native (id INT AUTO_INCREMENT PRIMARY KEY,"
+     " u UUID, KEY idx_value (u))",
+     "ANALYZE TABLE bench_uuid_native", "DROP TABLE IF EXISTS bench_uuid_native"),
+]
+
+
+def storage_benchmark(cur):
+    for _, create, _, drop in STORAGE_TABLES:
+        cur.execute(drop)
+        cur.execute(create)
+    cur.execute(
+        "INSERT INTO bench_ip_text (ip) SELECT CONCAT('10.', (seq DIV 65536) MOD 256,"
+        " '.', (seq DIV 256) MOD 256, '.', seq MOD 256) FROM seq_1_to_100000")
+    cur.execute("INSERT INTO bench_ip_inet (ip) SELECT ip FROM bench_ip_text")
+    cur.execute("INSERT INTO bench_uuid_text (u) SELECT UUID() FROM seq_1_to_100000")
+    cur.execute("INSERT INTO bench_uuid_native (u) SELECT u FROM bench_uuid_text")
+
+    sizes = {}
+    for name, _, analyze, drop in STORAGE_TABLES:
+        cur.execute(analyze)
+        cur.fetchall()
+        cur.execute("SELECT data_length + index_length FROM information_schema.tables"
+                    " WHERE table_schema = DATABASE() AND table_name = %s", (name,))
+        sizes[name] = cur.fetchone()[0]
+        cur.execute(drop)
+    return sizes
+
+
+def print_storage(sizes):
+    print(f"\nStorage for {STORAGE_ROWS:,} rows (id + value + index on value)\n")
+    print("| Stored as                 | Table size | Saved vs text |")
+    print("|---------------------------|------------|---------------|")
+    for text, native, label in (("bench_ip_text", "bench_ip_inet", "INET4"),
+                                ("bench_uuid_text", "bench_uuid_native", "UUID")):
+        t, n = sizes[text], sizes[native]
+        text_label = "VARCHAR(45)" if "ip" in text else "CHAR(36)"
+        print(f"| {text_label:<25} | {t / 1024 / 1024:7.2f} MB | -             |")
+        print(f"| {label:<25} | {n / 1024 / 1024:7.2f} MB | {(t - n) / t * 100:5.1f}%        |")
+
+
 def summary(label, values, statements):
     mean = statistics.mean(values)
     sd = statistics.stdev(values)
@@ -90,6 +153,8 @@ def main():
 
             cur.execute("SELECT COUNT(*) FROM airlines")
             print(f"Airlines table back to: {cur.fetchone()[0]} rows")
+
+            print_storage(storage_benchmark(cur))
     finally:
         conn.close()
 

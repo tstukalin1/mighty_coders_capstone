@@ -17,8 +17,8 @@ Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
 
 | # | Feature | What it replaces | What we found | Worth it when | Not worth it when | Demo | Tests |
 |---|---|---|---|---|---|---|---|
-| 1 | `INET4` / `INET6` | `VARCHAR(45)` for addresses | Stored in 4 / 16 bytes. Sorts numerically (as text, `'8.8.8.8'` sorts after `'192.168.1.10'`). Invalid values are rejected with error 1292. | A column holds IP addresses. | The column must also hold free text such as `'unknown'`; the engine rejects it. | `python/inet/`, `python/ip_addresses/` | 24 |
-| 2 | `UUID` | `CHAR(36)` | 16 bytes instead of 36. Invalid values are rejected. `DEFAULT UUID()` fills the column. | Ids must be unique across systems. | A plain `INT` is enough; a UUID costs 16 bytes against 4. | `python/uuid_type/` | 5 |
+| 1 | `INET4` / `INET6` | `VARCHAR(45)` for addresses | Stored in 4 / 16 bytes (measured in the [benchmark](#benchmark)). Sorts numerically (as text, `'8.8.8.8'` sorts after `'192.168.1.10'`). Invalid values are rejected with error 1292. | A column holds IP addresses. | The column must also hold free text such as `'unknown'`; the engine rejects it. | `python/inet/`, `python/ip_addresses/` | 24 |
+| 2 | `UUID` | `CHAR(36)` | 16 bytes instead of 36 (measured in the [benchmark](#benchmark)). Invalid values are rejected. `DEFAULT UUID()` fills the column. | Ids must be unique across systems. | A plain `INT` is enough; a UUID costs 16 bytes against 4. | `python/uuid_type/` | 5 |
 | 3 | `RETURNING` | `INSERT` + a second `SELECT` | One statement, one round trip, half the statements (see [benchmark](#benchmark)). Each statement returns only its own rows. | You need the generated id or the deleted rows back. | You need it on `UPDATE`: **`UPDATE ... RETURNING` needs 13.0, error 1064 on 11.4.** | `python/returning/`, `python/flight_returning/` | 16 |
 | 4 | `CREATE SEQUENCE` | One `AUTO_INCREMENT` per table | One counter shared by several tables. | Two or more tables need ids from the same series. | One table: `AUTO_INCREMENT` is simpler. | `python/sequence/` | 7 |
 | 5 | `INTERSECT` / `EXCEPT` | `JOIN` / `NOT IN` boilerplate | The intent is readable from the operator name. Demo uses the real OpenFlights routes. | "In both A and B" or "in A but not B". | A query that already needs a `JOIN` for other columns. | `python/intersect_except/` | 5 |
@@ -27,7 +27,7 @@ Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
 | 8 | Invisible columns | A new column that breaks `SELECT *` and column-less `INSERT` | An `INVISIBLE` column leaves both untouched but is usable by name. | Adding a technical column to a table that old code still reads. | New code that should see the column anyway. | `python/invisible_columns/` | 6 |
 | 9 | `ROW` type | One `DECLARE` per column in a procedure | One `ROW` variable; `ROW TYPE OF airlines` takes its shape from the table. | A procedure fetches a whole row. | The procedure needs one or two columns. | `python/row_type/` | 9 |
 | 10 | Instant `ADD` / `DROP` / `MODIFY COLUMN` | Table-copy `ALTER` | **Not covered in this repository.** | — | — | — | — |
-| 11 | Progress reporting | A silent `ALTER TABLE` | The process list reports the statement while `ADD INDEX ... ALGORITHM=INPLACE, LOCK=NONE` runs on 300,000 rows. In our runs it showed the state `altering table` with stage 0/0 and no percentage. | A long `ALTER` runs and you want to know it is alive. | You expect a percentage bar on 11.4; we did not see one. | `python/progress_reporting/` | 10 |
+| 11 | Progress reporting | A silent `ALTER TABLE` | The process list reports the statement while `ADD INDEX ... ALGORITHM=INPLACE, LOCK=NONE` runs on 300,000 rows. The demo's monitor prints what a second connection sees; in our runs on 11.4 that was state `altering table`, stage 0/0 and no percentage. | A long `ALTER` runs and you want to know it is alive. | You expect a percentage bar on 11.4; we did not see one. | `python/progress_reporting/` | 10 |
 | 12 | Global temporary tables | Per-session `TEMPORARY TABLE` | **Not available.** `CREATE GLOBAL TEMPORARY TABLE` fails with error 1064 on 11.4 ([MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915)). The demo captures the real error. | — | — | `python/global_temp/` | 3 |
 | 13 | `UPDATE` / `DELETE` from a CTE | Nested `WHERE IN (SELECT ...)` | **`WITH ... UPDATE` needs 12.3; on 11.4 it fails with error 1064.** On 11.4 the same job works with `UPDATE ... JOIN (SELECT ...) AS name`, which also names the filter. | You can run 12.3, or accept the `JOIN` form. | — | `python/cte_update_delete/` | 4 |
 
@@ -39,9 +39,15 @@ feature is needed. Test counts add up to **105**.
 
 ## Benchmark
 
-`benchmark.py` measures `INSERT ... RETURNING` against `INSERT` + `SELECT` on
-the real `airlines` table. It runs 5 rounds of 200 operations per approach,
-alternates which approach goes first, and reports mean and standard deviation.
+`benchmark.py` makes two measurements:
+
+1. **Statements and time saved.** `INSERT ... RETURNING` against `INSERT` + `SELECT`
+   on the real `airlines` table: 5 rounds of 200 operations per approach, the
+   order alternating every round, mean and standard deviation reported.
+2. **Bytes saved.** The same 100,000 values stored as `VARCHAR(45)` against `INET4`
+   and as `CHAR(36)` against `UUID`, each table with an `INT` primary key and an
+   index on the value. Table size (data + index) comes from
+   `information_schema.tables` after `ANALYZE TABLE`.
 
 ```bash
 python benchmark.py
@@ -49,11 +55,13 @@ python benchmark.py
 
 Results (Docker `mariadb:11.4` and the Python client on the same laptop):
 
-<!-- BENCHMARK-RESULTS: paste the table printed by `python benchmark.py` here -->
+<!-- BENCHMARK-RESULTS: paste everything `python benchmark.py` prints here -->
 
 Client and server share one machine, so network latency is close to zero and
-the saving is a **lower bound**. Each saved statement also saves a network
-round trip on a real deployment.
+the `RETURNING` saving is a **lower bound**: each saved statement also saves a
+network round trip on a real deployment. The storage figures include the
+primary key, so the saving on the value column alone is larger than the table
+percentage.
 
 ---
 
