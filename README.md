@@ -108,7 +108,7 @@ error stops the rest, which is why the files carry number prefixes.
 ## Run it
 
 Requirements: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-installed and running, and Python 3.9 or newer.
+installed and running, and Python 3.12 or newer (tested with 3.12, 3.13 and 3.14).
 
 1. Clone the repository and go into it:
 
@@ -214,7 +214,7 @@ any demo more than once.
 python benchmark.py
 ```
 
-Results from one run on a MacBook Air (Docker `mariadb:11.4`, client and server on the same machine):
+Results from one run on a MacBook Air (Python 3.14, Docker `mariadb:11.4`, client and server on the same machine):
 
 **`RETURNING` against `INSERT` + `SELECT`** (200 operations per round, 5 rounds, order alternated):
 
