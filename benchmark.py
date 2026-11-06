@@ -1,11 +1,14 @@
 """
 benchmark.py -- RETURNING vs. the old way (INSERT + SELECT), measured properly
 
-Two measurements:
+Three measurements:
   1. Statements and time saved: INSERT ... RETURNING vs INSERT + SELECT.
   2. Bytes saved: the same 100,000 values stored as VARCHAR(45) vs INET4 and as
      CHAR(36) vs UUID, each with a primary key and an index on the value
      (table size = data + index, from information_schema after ANALYZE TABLE).
+  3. Migration time: ADD COLUMN with ALGORITHM=COPY vs ALGORITHM=INSTANT on a
+     table of about 300,000 rows (airlines repeated 50 times), ROUNDS rounds,
+     order alternated; the column is dropped again after each ALTER.
 
 Question 1: how much does INSERT ... RETURNING save over INSERT followed by a
 separate SELECT to read the row back?
@@ -120,6 +123,47 @@ def print_storage(sizes):
         print(f"| {label:<25} | {n / 1024 / 1024:7.2f} MB | {(t - n) / t * 100:5.1f}%        |")
 
 
+MIGRATION_STEPS = {
+    "COPY": ("ALTER TABLE bench_migration ADD COLUMN note VARCHAR(50), ALGORITHM=COPY",
+             "ALTER TABLE bench_migration DROP COLUMN note, ALGORITHM=COPY"),
+    "INSTANT": ("ALTER TABLE bench_migration ADD COLUMN note VARCHAR(50), ALGORITHM=INSTANT",
+                "ALTER TABLE bench_migration DROP COLUMN note, ALGORITHM=INSTANT"),
+}
+
+
+def migration_benchmark(cur):
+    cur.execute("DROP TABLE IF EXISTS bench_migration")
+    cur.execute("CREATE TABLE bench_migration (id INT AUTO_INCREMENT PRIMARY KEY,"
+                " name VARCHAR(200), country VARCHAR(100))")
+    cur.execute("INSERT INTO bench_migration (name, country)"
+                " SELECT a.name, a.country FROM airlines a JOIN seq_1_to_50 s")
+    cur.execute("SELECT COUNT(*) FROM bench_migration")
+    rows = cur.fetchone()[0]
+    times = {"COPY": [], "INSTANT": []}
+    for r in range(ROUNDS):
+        order = ["COPY", "INSTANT"] if r % 2 == 0 else ["INSTANT", "COPY"]
+        for algorithm in order:
+            add, drop = MIGRATION_STEPS[algorithm]
+            start = time.perf_counter()
+            cur.execute(add)
+            times[algorithm].append((time.perf_counter() - start) * 1000)
+            cur.execute(drop)
+    cur.execute("DROP TABLE IF EXISTS bench_migration")
+    return rows, times
+
+
+def print_migration(rows, times):
+    print(f"\nADD COLUMN on {rows:,} rows, {ROUNDS} rounds, order alternated\n")
+    print("| Algorithm | Mean      | Std dev   |")
+    print("|-----------|-----------|-----------|")
+    for algorithm in ("COPY", "INSTANT"):
+        values = times[algorithm]
+        print(f"| {algorithm:<9} | {statistics.mean(values):6.1f} ms | "
+              f"{statistics.stdev(values):6.1f} ms |")
+    ratio = statistics.mean(times["COPY"]) / statistics.mean(times["INSTANT"])
+    print(f"\nINSTANT was {ratio:.0f}x faster; COPY grows with the table, INSTANT does not.")
+
+
 def summary(label, values, statements):
     mean = statistics.mean(values)
     sd = statistics.stdev(values)
@@ -155,6 +199,7 @@ def main():
             print(f"Airlines table back to: {cur.fetchone()[0]} rows")
 
             print_storage(storage_benchmark(cur))
+            print_migration(*migration_benchmark(cur))
     finally:
         conn.close()
 
