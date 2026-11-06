@@ -11,6 +11,21 @@ before (`before.py`) and once with the MariaDB feature (`after.py`). Every
 claim below is backed by a script you can run and a test that checks it.
 Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
 
+**The path in short:** clone → `cp .env.example .env` → `docker compose up -d`
+(MariaDB 11.4, loads the data) → `pip install -r requirements.txt` → `pytest`
+(111 passed) → run any `before.py` / `after.py` pair. Step by step:
+[Run it](#run-it).
+
+**Contents:**
+[What we found](#what-we-found) ·
+[Data model](#data-model) ·
+[Run it](#run-it) ·
+[Benchmark](#benchmark) ·
+[Examples to paste](#examples-to-paste-into-your-own-schema) ·
+[Repository layout](#repository-layout) ·
+[How it was made](#how-it-was-made) ·
+[Who did what](#who-did-what)
+
 ---
 
 ## What we found
@@ -36,101 +51,6 @@ also arrived in 12.3.1. We pin 11.4, so the demos show what works there and
 record exactly where a newer server is needed. Global temporary tables are not
 in 12.3 either: [MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915) is
 still open and targets 13.3. Test counts add up to **111**.
-
----
-
-## Benchmark
-
-`benchmark.py` makes three measurements:
-
-1. **Statements and time saved.** `INSERT ... RETURNING` against `INSERT` + `SELECT`
-   on the real `airlines` table: 5 rounds of 200 operations per approach, the
-   order alternating every round, mean and standard deviation reported.
-2. **Bytes saved.** The same 100,000 values stored as `VARCHAR(45)` against `INET4`
-   and as `CHAR(36)` against `UUID`, each table with an `INT` primary key and an
-   index on the value. Table size (data + index) comes from
-   `information_schema.tables` after `ANALYZE TABLE`.
-3. **Migration time.** `ADD COLUMN` with `ALGORITHM=COPY` against
-   `ALGORITHM=INSTANT` on about 300,000 rows (the airlines repeated 50 times),
-   5 rounds, order alternating, mean and standard deviation reported.
-
-```bash
-python benchmark.py
-```
-
-Results from one run on a MacBook Air (Docker `mariadb:11.4`, client and server on the same machine):
-
-**`RETURNING` against `INSERT` + `SELECT`** (200 operations per round, 5 rounds, order alternated):
-
-| Approach | Statements per operation | Mean per operation | Std dev |
-|---|---|---|---|
-| `INSERT` + `SELECT` (old way) | 2 | 0.323 ms | 0.019 ms |
-| `INSERT ... RETURNING` | 1 | 0.185 ms | 0.005 ms |
-
-`RETURNING` was 42.6% faster per operation and sent half as many statements.
-
-**Storage** for 100,000 rows (`id` + value + index on the value):
-
-| Stored as | Table size | Saved vs text |
-|---|---|---|
-| `VARCHAR(45)` | 9.03 MB | |
-| `INET4` | 6.03 MB | 33.2% |
-| `CHAR(36)` | 12.03 MB | |
-| `UUID` | 8.03 MB | 33.2% |
-
-**Migration time:** `ADD COLUMN` on 308,100 rows (5 rounds, order alternated):
-
-| Algorithm | Mean | Std dev |
-|---|---|---|
-| `ALGORITHM=COPY` (old way: the table is rebuilt) | 183.7 ms | 3.2 ms |
-| `ALGORITHM=INSTANT` | 3.7 ms | 1.8 ms |
-
-`INSTANT` was 49x faster. A copy rewrites every row, so its time grows with
-the table; an instant change only rewrites the definition.
-
-Timings will differ on another machine, so run `python benchmark.py` to
-reproduce them; the statement counts and the storage sizes should match.
-The numbers above come from one run of `python benchmark.py`.
-
-Client and server share one machine, so network latency is close to zero and
-the `RETURNING` saving is a **lower bound**: each saved statement also saves a
-network round trip on a real deployment. The storage figures include the
-primary key, so the saving on the value column alone is larger than the table
-percentage.
-
----
-
-## Examples to paste into your own schema
-
-Each block runs on its own in an empty database on MariaDB 11.4. They are
-short versions of the demos in `python/` and the scripts in `sql/init/`.
-
-```sql
--- 1. RETURNING: get the new row back from the INSERT itself (no second SELECT)
-CREATE TABLE customers (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100));
-INSERT INTO customers (name) VALUES ('Ada') RETURNING id, name;
-
--- 2. INET4: addresses that sort as numbers and reject bad input
-CREATE TABLE visits (ip INET4 NOT NULL);
-INSERT INTO visits VALUES ('192.168.1.10'), ('8.8.8.8'), ('10.0.0.1');
-SELECT ip FROM visits ORDER BY ip;   -- 8.8.8.8, 10.0.0.1, 192.168.1.10
-
--- 3. Invisible column: SELECT * and INSERT without a column list keep working
-ALTER TABLE customers ADD COLUMN created_at TIMESTAMP INVISIBLE DEFAULT CURRENT_TIMESTAMP;
-INSERT INTO customers VALUES (NULL, 'Bob');   -- the old INSERT still works
-SELECT * FROM customers;                      -- still only id, name
-SELECT name, created_at FROM customers;       -- visible when named
-
--- 4. One sequence shared by two tables
-CREATE SEQUENCE order_no START WITH 1000;
-CREATE TABLE web_orders  (no INT PRIMARY KEY DEFAULT (NEXT VALUE FOR order_no), item VARCHAR(50));
-CREATE TABLE shop_orders (no INT PRIMARY KEY DEFAULT (NEXT VALUE FOR order_no), item VARCHAR(50));
-INSERT INTO web_orders  (item) VALUES ('book');   -- no = 1000
-INSERT INTO shop_orders (item) VALUES ('pen');    -- no = 1001
-
--- 5. Instant ADD COLUMN: an error instead of a silent table copy if it cannot be instant
-ALTER TABLE customers ADD COLUMN email VARCHAR(150), ALGORITHM=INSTANT;
-```
 
 ---
 
@@ -272,6 +192,101 @@ docker compose down
 
 Every demo creates its own tables and most drop them again, so you can run
 any demo more than once.
+
+---
+
+## Benchmark
+
+`benchmark.py` makes three measurements:
+
+1. **Statements and time saved.** `INSERT ... RETURNING` against `INSERT` + `SELECT`
+   on the real `airlines` table: 5 rounds of 200 operations per approach, the
+   order alternating every round, mean and standard deviation reported.
+2. **Bytes saved.** The same 100,000 values stored as `VARCHAR(45)` against `INET4`
+   and as `CHAR(36)` against `UUID`, each table with an `INT` primary key and an
+   index on the value. Table size (data + index) comes from
+   `information_schema.tables` after `ANALYZE TABLE`.
+3. **Migration time.** `ADD COLUMN` with `ALGORITHM=COPY` against
+   `ALGORITHM=INSTANT` on about 300,000 rows (the airlines repeated 50 times),
+   5 rounds, order alternating, mean and standard deviation reported.
+
+```bash
+python benchmark.py
+```
+
+Results from one run on a MacBook Air (Docker `mariadb:11.4`, client and server on the same machine):
+
+**`RETURNING` against `INSERT` + `SELECT`** (200 operations per round, 5 rounds, order alternated):
+
+| Approach | Statements per operation | Mean per operation | Std dev |
+|---|---|---|---|
+| `INSERT` + `SELECT` (old way) | 2 | 0.323 ms | 0.019 ms |
+| `INSERT ... RETURNING` | 1 | 0.185 ms | 0.005 ms |
+
+`RETURNING` was 42.6% faster per operation and sent half as many statements.
+
+**Storage** for 100,000 rows (`id` + value + index on the value):
+
+| Stored as | Table size | Saved vs text |
+|---|---|---|
+| `VARCHAR(45)` | 9.03 MB | |
+| `INET4` | 6.03 MB | 33.2% |
+| `CHAR(36)` | 12.03 MB | |
+| `UUID` | 8.03 MB | 33.2% |
+
+**Migration time:** `ADD COLUMN` on 308,100 rows (5 rounds, order alternated):
+
+| Algorithm | Mean | Std dev |
+|---|---|---|
+| `ALGORITHM=COPY` (old way: the table is rebuilt) | 183.7 ms | 3.2 ms |
+| `ALGORITHM=INSTANT` | 3.7 ms | 1.8 ms |
+
+`INSTANT` was 49x faster. A copy rewrites every row, so its time grows with
+the table; an instant change only rewrites the definition.
+
+Timings will differ on another machine, so run `python benchmark.py` to
+reproduce them; the statement counts and the storage sizes should match.
+The numbers above come from one run of `python benchmark.py`.
+
+Client and server share one machine, so network latency is close to zero and
+the `RETURNING` saving is a **lower bound**: each saved statement also saves a
+network round trip on a real deployment. The storage figures include the
+primary key, so the saving on the value column alone is larger than the table
+percentage.
+
+---
+
+## Examples to paste into your own schema
+
+Each block runs on its own in an empty database on MariaDB 11.4. They are
+short versions of the demos in `python/` and the scripts in `sql/init/`.
+
+```sql
+-- 1. RETURNING: get the new row back from the INSERT itself (no second SELECT)
+CREATE TABLE customers (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100));
+INSERT INTO customers (name) VALUES ('Ada') RETURNING id, name;
+
+-- 2. INET4: addresses that sort as numbers and reject bad input
+CREATE TABLE visits (ip INET4 NOT NULL);
+INSERT INTO visits VALUES ('192.168.1.10'), ('8.8.8.8'), ('10.0.0.1');
+SELECT ip FROM visits ORDER BY ip;   -- 8.8.8.8, 10.0.0.1, 192.168.1.10
+
+-- 3. Invisible column: SELECT * and INSERT without a column list keep working
+ALTER TABLE customers ADD COLUMN created_at TIMESTAMP INVISIBLE DEFAULT CURRENT_TIMESTAMP;
+INSERT INTO customers VALUES (NULL, 'Bob');   -- the old INSERT still works
+SELECT * FROM customers;                      -- still only id, name
+SELECT name, created_at FROM customers;       -- visible when named
+
+-- 4. One sequence shared by two tables
+CREATE SEQUENCE order_no START WITH 1000;
+CREATE TABLE web_orders  (no INT PRIMARY KEY DEFAULT (NEXT VALUE FOR order_no), item VARCHAR(50));
+CREATE TABLE shop_orders (no INT PRIMARY KEY DEFAULT (NEXT VALUE FOR order_no), item VARCHAR(50));
+INSERT INTO web_orders  (item) VALUES ('book');   -- no = 1000
+INSERT INTO shop_orders (item) VALUES ('pen');    -- no = 1001
+
+-- 5. Instant ADD COLUMN: an error instead of a silent table copy if it cannot be instant
+ALTER TABLE customers ADD COLUMN email VARCHAR(150), ALGORITHM=INSTANT;
+```
 
 ---
 
