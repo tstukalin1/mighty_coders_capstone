@@ -40,9 +40,9 @@ def main():
             print(f"  get_airline_row(2)       : {first_row(cur, 'CALL get_airline_row(2)')}")
             print(f"  get_airline_row(999999)  : {first_row(cur, 'CALL get_airline_row(999999)')}")
 
-            cur.execute(f"DROP PROCEDURE IF EXISTS {PROC_TYPE_OF}")
+            cur.execute("DROP PROCEDURE IF EXISTS demo_airline_typeof")
             cur.execute(
-                f"CREATE PROCEDURE {PROC_TYPE_OF}(IN p_id INT) "
+                "CREATE PROCEDURE demo_airline_typeof(IN p_id INT) "
                 "BEGIN "
                 "  DECLARE a ROW TYPE OF airlines; "
                 "  SELECT * INTO a FROM airlines WHERE id = p_id; "
@@ -51,9 +51,9 @@ def main():
                 "END"
             )
             print("  ROW TYPE OF airlines, with SET a.name = UPPER(a.name):")
-            print(f"  result for id 2          : {first_row(cur, f'CALL {PROC_TYPE_OF}(2)')}")
+            print(f"  result for id 2          : {first_row(cur, 'CALL demo_airline_typeof(2)')}")
 
-            cur.execute(f"DROP PROCEDURE IF EXISTS {PROC_TYPE_OF}")
+            cur.execute("DROP PROCEDURE IF EXISTS demo_airline_typeof")
     finally:
         conn.close()
 

@@ -1,0 +1,56 @@
+name: tests
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Configure environment
+        run: cp .env.example .env
+
+      - name: Start MariaDB 11.4 (runs every script in sql/init/)
+        run: docker compose up -d
+
+      - name: Wait until the final server is up and the dataset is loaded
+        run: |
+          pip install -r requirements.txt
+          python - <<'PY'
+          import time, pymysql, os
+          from dotenv import load_dotenv
+          load_dotenv(".env")
+          for attempt in range(120):
+              try:
+                  c = pymysql.connect(host="127.0.0.1", port=int(os.getenv("DB_PORT")),
+                                      user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"),
+                                      database=os.getenv("DB_NAME"))
+                  cur = c.cursor()
+                  cur.execute("SELECT COUNT(*) FROM routes")
+                  if cur.fetchone()[0] > 60000:
+                      print("ready after", attempt * 2, "s")
+                      break
+              except Exception:
+                  pass
+              time.sleep(2)
+          else:
+              raise SystemExit("database did not become ready")
+          PY
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Show init log on failure
+        if: failure()
+        run: docker compose logs mariadb | tail -50

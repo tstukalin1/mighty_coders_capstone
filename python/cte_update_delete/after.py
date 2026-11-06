@@ -14,6 +14,8 @@ import sys
 import os
 import urllib.request
 
+import pymysql
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from db import get_connection
@@ -60,6 +62,15 @@ def main():
     try:
         with conn.cursor() as cur:
             setup(cur, airports)
+            try:  #the CTE form: needs MariaDB 12.3.1 (MDEV-37220)
+                cur.execute(
+                    "WITH registered AS (SELECT id FROM demo_airports WHERE iata != '')"
+                    " UPDATE demo_airports SET status = 'active'"
+                    " WHERE id IN (SELECT id FROM registered)"
+                )
+                print("[after.py] WITH ... UPDATE worked on this server")
+            except pymysql.MySQLError as e:
+                print(f"[after.py] WITH ... UPDATE failed: error {e.args[0]} (needs MariaDB 12.3.1)")
             cur.execute(  #the derived table names the filter, the JOIN applies it
                 "UPDATE demo_airports"
                 " JOIN (SELECT id FROM demo_airports WHERE iata != '') AS registered"

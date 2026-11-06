@@ -29,7 +29,7 @@ def timed_lookup(cur):
     times = []
     for _ in range(RUNS):
         start = time.perf_counter()
-        cur.execute(f"SELECT COUNT(*) FROM {TABLE} WHERE name = %s", (SEARCH_VALUE,))
+        cur.execute("SELECT COUNT(*) FROM progress_demo_old WHERE name = %s", (SEARCH_VALUE,))
         cur.fetchone()
         times.append((time.perf_counter() - start) * 1000)
     return sum(times) / len(times)
@@ -39,28 +39,28 @@ def main():
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute(f"DROP TABLE IF EXISTS {TABLE}")
-            cur.execute(f"CREATE TABLE {TABLE} ("
+            cur.execute("DROP TABLE IF EXISTS progress_demo_old")
+            cur.execute("CREATE TABLE progress_demo_old ("
                         " id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(200))")
-            cur.execute(f"INSERT INTO {TABLE} (name)"
+            cur.execute("INSERT INTO progress_demo_old (name)"
                         " SELECT a.name FROM airlines a JOIN seq_1_to_50 s")
-            cur.execute(f"SELECT COUNT(*) FROM {TABLE}")
+            cur.execute("SELECT COUNT(*) FROM progress_demo_old")
             rows = cur.fetchone()[0]
 
             print("[before.py] ALTER TABLE without progress reporting")
             print(f"  rows in table        : {rows:,}")
             print(f"  lookup, no index     : {timed_lookup(cur):.3f} ms (average of {RUNS})")
 
-            cur.execute(f"EXPLAIN SELECT COUNT(*) FROM {TABLE} WHERE name = %s", (SEARCH_VALUE,))
+            cur.execute("EXPLAIN SELECT COUNT(*) FROM progress_demo_old WHERE name = %s", (SEARCH_VALUE,))
             print(f"  access type          : {cur.fetchone()[3]}  (ALL = reads every row)")
 
             start = time.perf_counter()
-            cur.execute(f"ALTER TABLE {TABLE} ADD INDEX idx_name (name),"
+            cur.execute("ALTER TABLE progress_demo_old ADD INDEX idx_name (name),"
                         " ALGORITHM=INPLACE, LOCK=NONE")
             print(f"  ALTER TABLE finished : {time.perf_counter() - start:.2f} s")
             print("  progress during ALTER: none visible, you can only wait")
 
-            cur.execute(f"DROP TABLE IF EXISTS {TABLE}")
+            cur.execute("DROP TABLE IF EXISTS progress_demo_old")
     finally:
         conn.close()
 

@@ -36,21 +36,21 @@ def seq(conn):
 class TestSequenceBasics:
     def test_first_value_matches_start(self, conn, seq):
         with conn.cursor() as cur:
-            cur.execute(f"SELECT NEXT VALUE FOR {seq}")
+            cur.execute("SELECT NEXT VALUE FOR test_seq")
             row = cur.fetchone()
         assert row[0] == 1
 
     def test_value_increments(self, conn, seq):
         with conn.cursor() as cur:
-            cur.execute(f"SELECT NEXT VALUE FOR {seq}")
+            cur.execute("SELECT NEXT VALUE FOR test_seq")
             first = cur.fetchone()[0]
-            cur.execute(f"SELECT NEXT VALUE FOR {seq}")
+            cur.execute("SELECT NEXT VALUE FOR test_seq")
             second = cur.fetchone()[0]
         assert second == first + 1
 
     def test_value_is_integer(self, conn, seq):
         with conn.cursor() as cur:
-            cur.execute(f"SELECT NEXT VALUE FOR {seq}")
+            cur.execute("SELECT NEXT VALUE FOR test_seq")
             row = cur.fetchone()
         assert isinstance(row[0], int)
 
@@ -62,11 +62,11 @@ class TestSequenceSharedAcrossTables:
             cur.execute("CREATE OR REPLACE TABLE seq_test_b (id INT PRIMARY KEY, label VARCHAR(50))")
 
             cur.execute(
-                f"INSERT INTO seq_test_a (id, label) VALUES (NEXT VALUE FOR {seq}, %s)",
+                "INSERT INTO seq_test_a (id, label) VALUES (NEXT VALUE FOR test_seq, %s)",
                 ("A row",),
             )
             cur.execute(
-                f"INSERT INTO seq_test_b (id, label) VALUES (NEXT VALUE FOR {seq}, %s)",
+                "INSERT INTO seq_test_b (id, label) VALUES (NEXT VALUE FOR test_seq, %s)",
                 ("B row",),
             )
 
