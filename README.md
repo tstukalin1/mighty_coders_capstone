@@ -29,11 +29,13 @@ Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
 | 10 | Instant `ADD` / `DROP` / `MODIFY COLUMN` | Table-copy `ALTER` | **Not covered in this repository.** | — | — | — | — |
 | 11 | Progress reporting | A silent `ALTER TABLE` | The process list reports the statement while `ADD INDEX ... ALGORITHM=INPLACE, LOCK=NONE` runs on 300,000 rows. The demo's monitor prints what a second connection sees; in our runs on 11.4 that was state `altering table`, stage 0/0 and no percentage. | A long `ALTER` runs and you want to know it is alive. | You expect a percentage bar on 11.4; we did not see one. | `python/progress_reporting/` | 10 |
 | 12 | Global temporary tables | Per-session `TEMPORARY TABLE` | **Not available.** `CREATE GLOBAL TEMPORARY TABLE` fails with error 1064 on 11.4 ([MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915)). The demo captures the real error. | — | — | `python/global_temp/` | 3 |
-| 13 | `UPDATE` / `DELETE` from a CTE | Nested `WHERE IN (SELECT ...)` | **`WITH ... UPDATE` needs 12.3; on 11.4 it fails with error 1064.** On 11.4 the same job works with `UPDATE ... JOIN (SELECT ...) AS name`, which also names the filter. | You can run 12.3, or accept the `JOIN` form. | — | `python/cte_update_delete/` | 4 |
+| 13 | `UPDATE` / `DELETE` from a CTE | Nested `WHERE IN (SELECT ...)` | **`WITH ... UPDATE` needs 12.3; on 11.4 it fails with error 1064.** On 11.4 the same job works with `UPDATE ... JOIN (SELECT ...) AS name`, which also names the filter. | You can run 12.3, or accept the `JOIN` form. | The filter is a plain condition on the same table: `UPDATE ... WHERE` is shorter. | `python/cte_update_delete/` | 4 |
 
-Features 7, 12 and 13 are marked for 12.3 on the project page. We pin 11.4,
-so the demos show what works there and record exactly where the 12.3
-feature is needed. Test counts add up to **105**.
+Features 12 and 13 are marked for 12.3 on the project page, and `IS JSON` (7)
+also arrived in 12.3.1. We pin 11.4, so the demos show what works there and
+record exactly where a newer server is needed. Global temporary tables are not
+in 12.3 either: [MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915) is
+still open and targets 13.3. Test counts add up to **105**.
 
 ---
 
@@ -52,8 +54,6 @@ feature is needed. Test counts add up to **105**.
 ```bash
 python benchmark.py
 ```
-
-Results (Docker `mariadb:11.4` and the Python client on the same laptop):
 
 Results from one run on a MacBook Air (Python 3.14, Docker `mariadb:11.4`, client and server on the same machine):
 
@@ -89,7 +89,9 @@ percentage.
 ## Data model
 
 The demos run on the public [OpenFlights](https://github.com/jpatokal/openflights)
-data (Open Database License), committed in `data/` so nothing is downloaded:
+data (Open Database License), committed in `data/` and loaded on first start.
+The `UUID`, `INTERSECT` / `EXCEPT` and CTE demos download a small sample of the
+same files from GitHub, so they need internet access:
 
 ```mermaid
 erDiagram
