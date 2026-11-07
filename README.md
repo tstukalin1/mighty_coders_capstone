@@ -13,7 +13,7 @@ Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
 
 **The path in short:** clone → `cp .env.example .env` → `docker compose up -d`
 (MariaDB 11.4, loads the data) → `pip install -r requirements.txt` → `pytest`
-(111 passed) → run any `before.py` / `after.py` pair. Step by step:
+(115 passed) → run any `before.py` / `after.py` pair. Step by step:
 [Run it](#run-it).
 
 **Contents:**
@@ -35,7 +35,7 @@ Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
 | 1 | `INET4` / `INET6` | `VARCHAR(45)` for addresses | Stored in 4 / 16 bytes (measured in the [benchmark](#benchmark)). Sorts numerically (as text, `'8.8.8.8'` sorts after `'192.168.1.10'`). Invalid values are rejected with error 1292. | A column holds IP addresses. | The column must also hold free text such as `'unknown'`; the engine rejects it. | `python/inet/`, `python/ip_addresses/` | 24 |
 | 2 | `UUID` | `CHAR(36)` | 16 bytes instead of 36 (measured in the [benchmark](#benchmark)). Invalid values are rejected. `DEFAULT UUID()` fills the column. | Ids must be unique across systems. | A plain `INT` is enough; a UUID costs 16 bytes against 4. | `python/uuid_type/` | 5 |
 | 3 | `RETURNING` | `INSERT` + a second `SELECT` | One statement, one round trip, half the statements (see [benchmark](#benchmark)). Each statement returns only its own rows. | You need the generated id or the deleted rows back. | You need it on `UPDATE`: **`UPDATE ... RETURNING` needs 13.0, error 1064 on 11.4.** | `python/returning/`, `python/flight_returning/` | 16 |
-| 4 | `CREATE SEQUENCE` | One `AUTO_INCREMENT` per table | One counter shared by several tables. | Two or more tables need ids from the same series. | One table: `AUTO_INCREMENT` is simpler. | `python/sequence/` | 7 |
+| 4 | `CREATE SEQUENCE` | One `AUTO_INCREMENT` per table | One counter shared by several tables; `CYCLE`, `SETVAL` and `DEFAULT (NEXT VALUE FOR ...)` work as tested. **Not transactional:** a rolled-back `INSERT` keeps its number used, so the next row leaves a gap. | Two or more tables need ids from the same series. | One table: `AUTO_INCREMENT` is simpler. Numbers must be gapless (for example invoice numbers). | `python/sequence/` | 11 |
 | 5 | `INTERSECT` / `EXCEPT` | `JOIN` / `NOT IN` boilerplate | The intent is readable from the operator name. Demo uses the real OpenFlights routes. | "In both A and B" or "in A but not B". | A query that already needs a `JOIN` for other columns. | `python/intersect_except/` | 5 |
 | 6 | `CREATE OR REPLACE` | `DROP TABLE IF EXISTS` + `CREATE` | One statement; plain `CREATE` fails with error 1050. **Not atomic**, and it **fails with error 1451 if a foreign key points at the table.** | Re-runnable migration and demo scripts. | The table holds data you want to keep, or other tables reference it. | `python/create_or_replace/` | 6 |
 | 7 | `IS JSON` | application-side validation | **`IS JSON` needs MariaDB 12.3.1 ([MDEV-37072](https://jira.mariadb.org/browse/MDEV-37072)); on 11.4 we use `CHECK (JSON_VALID(...))`**, which rejects bad documents at `INSERT`. | A `JSON` column must never hold invalid text. | You pin a server older than 12.3 and want the SQL-standard syntax. | `python/json_check/` | 10 |
@@ -50,7 +50,7 @@ Features 12 and 13 are marked for 12.3 on the project page, and `IS JSON` (7)
 also arrived in 12.3.1. We pin 11.4, so the demos show what works there and
 record exactly where a newer server is needed. Global temporary tables are not
 in 12.3 either: [MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915) is
-still open and targets 13.3. Test counts add up to **111**.
+still open and targets 13.3. Test counts add up to **115**.
 
 ---
 
@@ -58,8 +58,7 @@ still open and targets 13.3. Test counts add up to **111**.
 
 The demos run on the public [OpenFlights](https://github.com/jpatokal/openflights)
 data (Open Database License), committed in `data/` and loaded on first start.
-The `UUID`, `INTERSECT` / `EXCEPT` and CTE demos download a small sample of the
-same files from GitHub, so they need internet access:
+All demos read from these tables, so nothing is downloaded after the clone:
 
 ```mermaid
 erDiagram
@@ -156,7 +155,7 @@ installed and running, and Python 3.12 or newer (tested with 3.12 and 3.14).
    python db.py
    ```
 
-8. Run the tests. Expected output: `111 passed`:
+8. Run the tests. Expected output: `115 passed`:
 
    ```bash
    pytest
@@ -297,7 +296,7 @@ ALTER TABLE customers ADD COLUMN email VARCHAR(150), ALGORITHM=INSTANT;
 | `sql/init/` | The schema and data: 14 numbered SQL files |
 | `data/` | OpenFlights CSV files |
 | `python/<feature>/` | `before.py` and `after.py` for each feature ([index](python/README.md)) |
-| `tests/` | 111 pytest tests; `conftest.py` gives each test one connection and rolls back |
+| `tests/` | 115 pytest tests; `conftest.py` gives each test one connection and rolls back |
 | `benchmark.py` | Statements, bytes and migration time, with repeated runs |
 | `.github/workflows/tests.yml` | CI: starts MariaDB 11.4 and runs `pytest` on every push and pull request |
 | `db.py` | Connection helper; reads credentials from `.env` |

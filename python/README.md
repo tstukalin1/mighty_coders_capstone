@@ -9,7 +9,7 @@ the MariaDB feature). Start the database first (`docker compose up -d`, see the
 | `INET4` / `INET6` | `01_inet.sql`, `03_inet.sql` | `python python/ip_addresses/after.py`<br>`python python/inet/after.py` | Numeric sort, 4-byte storage, error 1292 for invalid addresses |
 | `UUID` | `04_uuid.sql` | `python python/uuid_type/after.py` | 16 bytes, invalid values rejected, `DEFAULT UUID()` |
 | `RETURNING` | `11_create_or_replace_returning.sql`, `12_flight_dataset.sql` | `python python/returning/after.py`<br>`python python/flight_returning/after.py` | Row back from `INSERT` / `DELETE` in one statement |
-| `CREATE SEQUENCE` | `06_sequence.sql` | `python python/sequence/after.py` | One counter shared by two tables |
+| `CREATE SEQUENCE` | `06_sequence.sql` | `python python/sequence/after.py` | One counter shared by two tables; the gap after a rolled-back `INSERT`; `SETVAL` |
 | `INTERSECT` / `EXCEPT` | `05_intersect_except.sql` | `python python/intersect_except/after.py` | Set operations on real routes |
 | `CREATE OR REPLACE` | `11_create_or_replace_returning.sql` | `python python/create_or_replace/after.py` | Re-runnable script; error 1451 under a foreign key |
 | JSON check | `02_isjson_check.sql` | `python python/json_check/after.py` | `CHECK (JSON_VALID(...))` rejects bad JSON (`IS JSON` needs 12.3.1) |

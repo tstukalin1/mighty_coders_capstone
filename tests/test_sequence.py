@@ -139,3 +139,58 @@ class TestSequenceCycling:
                 cur.execute("SELECT NEXT VALUE FOR nocycle_test_seq")
 
             cur.execute("DROP SEQUENCE IF EXISTS nocycle_test_seq")
+
+class TestSequenceLimits:
+    """What a sequence does NOT give you, and the tools to manage it."""
+
+    @pytest.fixture
+    def invoices(self, conn, seq):
+        with conn.cursor() as cur:
+            cur.execute("CREATE OR REPLACE TABLE test_invoices (no INT PRIMARY KEY, item VARCHAR(50))")
+        conn.commit()
+        yield "test_invoices"
+        with conn.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS test_invoices")
+        conn.commit()
+
+    def test_rollback_does_not_return_the_value(self, conn, invoices):
+        # A sequence is not transactional: a rolled-back INSERT leaves a gap.
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO test_invoices VALUES (NEXT VALUE FOR test_seq, 'cancelled')")
+            conn.rollback()
+            cur.execute("INSERT INTO test_invoices VALUES (NEXT VALUE FOR test_seq, 'kept')")
+            conn.commit()
+            cur.execute("SELECT no, item FROM test_invoices")
+            rows = cur.fetchall()
+        assert rows == ((2, "kept"),)   # number 1 is gone for good
+
+    def test_setval_moves_the_counter(self, conn, seq):
+        # After importing old data, SETVAL makes the sequence continue after it.
+        with conn.cursor() as cur:
+            cur.execute("SELECT SETVAL(test_seq, 500)")
+            cur.execute("SELECT NEXT VALUE FOR test_seq")
+            assert cur.fetchone()[0] == 501
+
+    def test_previous_value_is_per_session(self, conn, seq):
+        from db import get_connection
+        with conn.cursor() as cur:
+            cur.execute("SELECT NEXT VALUE FOR test_seq")
+            cur.execute("SELECT PREVIOUS VALUE FOR test_seq")
+            assert cur.fetchone()[0] == 1
+        other = get_connection()
+        try:
+            with other.cursor() as cur:
+                cur.execute("SELECT PREVIOUS VALUE FOR test_seq")
+                assert cur.fetchone()[0] is None   # the other session has not used it
+        finally:
+            other.close()
+
+    def test_default_next_value_fills_the_column(self, conn, seq):
+        with conn.cursor() as cur:
+            cur.execute("CREATE OR REPLACE TABLE test_seq_default"
+                        " (no INT PRIMARY KEY DEFAULT (NEXT VALUE FOR test_seq), item VARCHAR(50))")
+            cur.execute("INSERT INTO test_seq_default (item) VALUES ('a'), ('b')")
+            cur.execute("SELECT no FROM test_seq_default ORDER BY no")
+            numbers = [row[0] for row in cur.fetchall()]
+            cur.execute("DROP TABLE test_seq_default")
+        assert numbers == [1, 2]
