@@ -88,6 +88,26 @@ SELECT NEXT VALUE FOR cycling_seq;  -- cycles back to 1
 
 
 
+-- Limits and tools
+
+-- A sequence is NOT transactional: a rolled-back INSERT still uses up its
+-- number, so the next row leaves a gap. Do not use it for gapless numbering
+-- such as invoice numbers that the law requires to be continuous.
+START TRANSACTION;
+INSERT INTO sequence_seq_a (id, label) VALUES (NEXT VALUE FOR member_id_seq, 'cancelled');
+ROLLBACK;
+INSERT INTO sequence_seq_a (id, label) VALUES (NEXT VALUE FOR member_id_seq, 'after rollback');
+SELECT * FROM sequence_seq_a;   -- 'after rollback' gets 107, not 106: 106 is lost
+
+-- SETVAL moves the counter, for example after importing old rows
+SELECT SETVAL(member_id_seq, 1000);
+SELECT NEXT VALUE FOR member_id_seq;      -- 1001
+
+-- PREVIOUS VALUE FOR is per session: another connection sees NULL
+SELECT PREVIOUS VALUE FOR member_id_seq;  -- 1001 in this session
+
+
+
 -- Cleanup
 
 

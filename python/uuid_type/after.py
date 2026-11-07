@@ -3,35 +3,33 @@ after.py — API keys stored as UUID (MariaDB 10.7+)
 
 16 bytes instead of 36. Invalid values rejected at INSERT time.
 DEFAULT UUID() generates a valid v1 UUID automatically.
-Source data: OpenFlights airports dataset (airports.dat).
+Source data: OpenFlights airports dataset (data/airports.csv, loaded into the airports table).
 """
 
-import csv
-import io
 import sys
 import os
-import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from db import get_connection
 
-AIRPORTS_URL = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
 LIMIT = 20  #number of airports to use
 
 
 def fetch_airports():
-    #download airports.dat, return (iata, name) pairs with valid 3-letter IATA codes
-    airports = []
-    with urllib.request.urlopen(AIRPORTS_URL) as response:
-        for row in csv.reader(io.TextIOWrapper(response, encoding="utf-8")):
-            iata, name = row[4], row[1]
-            if iata and iata != r"\N" and len(iata) == 3:
-                airports.append((iata, name))
-                if len(airports) >= LIMIT:
-                    break
-    return airports
-
+    #read (iata, name) pairs with a 3-letter IATA code from the airports table
+    #(loaded from data/airports.csv by sql/init/12_flight_dataset.sql)
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT iata, name FROM airports"
+                " WHERE CHAR_LENGTH(iata) = 3 ORDER BY id LIMIT %s",
+                (LIMIT,),
+            )
+            return list(cur.fetchall())
+    finally:
+        conn.close()
 
 def main():
     airports = fetch_airports()
