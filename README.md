@@ -58,7 +58,7 @@ still open and targets 13.3. Test counts add up to **115**.
 
 The demos run on the public [OpenFlights](https://github.com/jpatokal/openflights)
 data (Open Database License), committed in `data/` and loaded on first start.
-All demos read from these tables, so nothing is downloaded after the clone:
+All demos read from these tables, so no demo needs internet once the setup is done:
 
 ```mermaid
 erDiagram
