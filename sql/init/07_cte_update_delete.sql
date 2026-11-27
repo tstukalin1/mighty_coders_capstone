@@ -11,7 +11,12 @@
 -- Express the filter as a derived table (subquery with an alias) and JOIN it to the
 -- target. No double nesting — intent is clear: match these rows, then update/delete them.
 -- Note: WITH ... UPDATE / WITH ... DELETE (a CTE feeding the change) needs MariaDB 12.3.1
--- (MDEV-37220). On 11.4, the version this project pins, it fails with error 1064.
+-- (MDEV-37220); on 11.4 it fails with error 1064. This init script must also run on 11.4
+-- (CI tests both versions), so it uses the JOIN form. On 12.3, the version we pin, the
+-- WITH form works:
+--   WITH no_iata AS (SELECT id FROM airports WHERE iata IS NULL)
+--   DELETE FROM airports WHERE id IN (SELECT id FROM no_iata);
+-- python/cte_update_delete/after.py runs it, and tests/test_cte_update_delete.py checks it.
 
 CREATE TABLE IF NOT EXISTS airports (
     id      INT          AUTO_INCREMENT PRIMARY KEY,

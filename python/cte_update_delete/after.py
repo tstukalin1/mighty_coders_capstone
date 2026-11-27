@@ -1,9 +1,10 @@
 """
-after.py — UPDATE/DELETE with a derived-table JOIN (MariaDB)
+after.py — UPDATE/DELETE from a CTE: WITH ... UPDATE / WITH ... DELETE (MariaDB 12.3.1+)
 
-MariaDB 11.4 does not support WITH ... UPDATE / WITH ... DELETE (error 1064).
-The working way is UPDATE ... JOIN (SELECT ...) AS name: the derived table
-names the filtering logic, so no double nesting is needed.
+The WITH clause names the filter, and the UPDATE or DELETE uses it, with no
+double nesting (MDEV-37220). On an older server (11.4) WITH ... UPDATE is a
+syntax error (1064); there the demo falls back to UPDATE ... JOIN (SELECT ...)
+AS name, which also names the filter.
 Source data: OpenFlights airports dataset (data/airports.csv, loaded into the airports table).
 
 """
@@ -64,23 +65,28 @@ def main():
                     " UPDATE demo_airports SET status = 'active'"
                     " WHERE id IN (SELECT id FROM registered)"
                 )
-                print("[after.py] WITH ... UPDATE worked on this server")
+                cur.execute(
+                    "WITH no_iata AS (SELECT id FROM demo_airports WHERE iata = '')"
+                    " DELETE FROM demo_airports WHERE id IN (SELECT id FROM no_iata)"
+                )
+                method = "WITH ... UPDATE / WITH ... DELETE"
             except pymysql.MySQLError as e:
                 print(f"[after.py] WITH ... UPDATE failed: error {e.args[0]} (needs MariaDB 12.3.1)")
-            cur.execute(  #the derived table names the filter, the JOIN applies it
-                "UPDATE demo_airports"
-                " JOIN (SELECT id FROM demo_airports WHERE iata != '') AS registered"
-                "   ON demo_airports.id = registered.id"
-                " SET demo_airports.status = 'active'"
-            )
-            cur.execute(  #same pattern for DELETE
-                "DELETE demo_airports FROM demo_airports"
-                " JOIN (SELECT id FROM demo_airports WHERE iata = '') AS no_iata"
-                "   ON demo_airports.id = no_iata.id"
-            )
+                cur.execute(  #fallback: the derived table names the filter, the JOIN applies it
+                    "UPDATE demo_airports"
+                    " JOIN (SELECT id FROM demo_airports WHERE iata != '') AS registered"
+                    "   ON demo_airports.id = registered.id"
+                    " SET demo_airports.status = 'active'"
+                )
+                cur.execute(  #same pattern for DELETE
+                    "DELETE demo_airports FROM demo_airports"
+                    " JOIN (SELECT id FROM demo_airports WHERE iata = '') AS no_iata"
+                    "   ON demo_airports.id = no_iata.id"
+                )
+                method = "derived-table JOIN (fallback for servers before 12.3.1)"
             cur.execute("SELECT iata, name, country, status FROM demo_airports ORDER BY iata")
             rows = cur.fetchall()
-        print("[after.py] Airports after UPDATE+DELETE via derived-table JOIN:")
+        print(f"[after.py] Airports after UPDATE+DELETE via {method}:")
         for iata, name, country, status in rows:
             print(f"  {iata}  {status}  {name} ({country})")
     finally:

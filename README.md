@@ -9,11 +9,11 @@ Capstone Project I, Constructor University, in partnership with the MariaDB Foun
 For each feature we wrote the same job twice: once the way you had to do it
 before (`before.py`) and once with the MariaDB feature (`after.py`). Every
 claim below is backed by a script you can run and a test that checks it.
-Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
+Developed and tested against **MariaDB 12.3.3** (Docker image `mariadb:12.3.3`, an exact version). CI also runs every test on **11.4.13**, the previous LTS, where the 12.3 features must fail.
 
 **The path in short:** clone → `cp .env.example .env` → `docker compose up -d`
-(MariaDB 11.4, loads the data) → `pip install -r requirements.txt` → `pytest`
-(115 passed) → run any `before.py` / `after.py` pair. Step by step:
+(MariaDB 12.3.3, loads the data) → `pip install -r requirements.txt` → `pytest`
+(124 passed) → run any `before.py` / `after.py` pair. Step by step:
 [Run it](#run-it).
 
 **Contents:**
@@ -34,23 +34,24 @@ Developed and tested against **MariaDB 11.4** (Docker image `mariadb:11.4`).
 |---|---|---|---|---|---|---|---|
 | 1 | `INET4` / `INET6` | `VARCHAR(45)` for addresses | Stored in 4 / 16 bytes (measured in the [benchmark](#benchmark)). Sorts numerically (as text, `'8.8.8.8'` sorts after `'192.168.1.10'`). Invalid values are rejected with error 1292. | A column holds IP addresses. | The column must also hold free text such as `'unknown'`; the engine rejects it. | `python/inet/`, `python/ip_addresses/` | 24 |
 | 2 | `UUID` | `CHAR(36)` | 16 bytes instead of 36 (measured in the [benchmark](#benchmark)). Invalid values are rejected. `DEFAULT UUID()` fills the column. | Ids must be unique across systems. | A plain `INT` is enough; a UUID costs 16 bytes against 4. | `python/uuid_type/` | 5 |
-| 3 | `RETURNING` | `INSERT` + a second `SELECT` | One statement, one round trip, half the statements (see [benchmark](#benchmark)). Each statement returns only its own rows. | You need the generated id or the deleted rows back. | You need it on `UPDATE`: **`UPDATE ... RETURNING` needs 13.0, error 1064 on 11.4.** | `python/returning/`, `python/flight_returning/` | 16 |
+| 3 | `RETURNING` | `INSERT` + a second `SELECT` | One statement, one round trip, half the statements (see [benchmark](#benchmark)). Each statement returns only its own rows. | You need the generated id or the deleted rows back. | You need it on `UPDATE`: **`UPDATE ... RETURNING` needs 13.0, error 1064 on 11.4 and 12.3.** | `python/returning/`, `python/flight_returning/` | 16 |
 | 4 | `CREATE SEQUENCE` | One `AUTO_INCREMENT` per table | One counter shared by several tables; `CYCLE`, `SETVAL` and `DEFAULT (NEXT VALUE FOR ...)` work as tested. **Not transactional:** a rolled-back `INSERT` keeps its number used, so the next row leaves a gap. | Two or more tables need ids from the same series. | One table: `AUTO_INCREMENT` is simpler. Numbers must be gapless (for example invoice numbers). | `python/sequence/` | 11 |
 | 5 | `INTERSECT` / `EXCEPT` | `JOIN` / `NOT IN` boilerplate | The intent is readable from the operator name. Demo uses the real OpenFlights routes. | "In both A and B" or "in A but not B". | A query that already needs a `JOIN` for other columns. | `python/intersect_except/` | 5 |
 | 6 | `CREATE OR REPLACE` | `DROP TABLE IF EXISTS` + `CREATE` | One statement; plain `CREATE` fails with error 1050. **Not atomic**, and it **fails with error 1451 if a foreign key points at the table.** | Re-runnable migration and demo scripts. | The table holds data you want to keep, or other tables reference it. | `python/create_or_replace/` | 6 |
-| 7 | `IS JSON` | application-side validation | **`IS JSON` needs MariaDB 12.3.1 ([MDEV-37072](https://jira.mariadb.org/browse/MDEV-37072)); on 11.4 we use `CHECK (JSON_VALID(...))`**, which rejects bad documents at `INSERT`. | A `JSON` column must never hold invalid text. | You pin a server older than 12.3 and want the SQL-standard syntax. | `python/json_check/` | 10 |
+| 7 | `IS JSON` | application-side validation (`json.loads` in every program) | `CHECK (doc IS JSON)` refuses broken JSON from every program with error 4025; `IS JSON OBJECT` / `ARRAY` and `WITH UNIQUE KEYS` work as tested. **Needs 12.3.1 ([MDEV-37072](https://jira.mariadb.org/browse/MDEV-37072)): on 11.4 it is error 1064**, and `CHECK (JSON_VALID(...))` does the same job. | A text column must never hold invalid JSON. | The column is already `JSON`: MariaDB adds a `JSON_VALID` check to it automatically. | `python/json_check/` | 17 |
 | 8 | Invisible columns | A new column that breaks `SELECT *` and column-less `INSERT` | An `INVISIBLE` column leaves both untouched but is usable by name. | Adding a technical column to a table that old code still reads. | New code that should see the column anyway. | `python/invisible_columns/` | 6 |
 | 9 | `ROW` type | One `DECLARE` per column in a procedure | One `ROW` variable; `ROW TYPE OF airlines` takes its shape from the table. | A procedure fetches a whole row. | The procedure needs one or two columns. | `python/row_type/` | 9 |
-| 10 | Instant `ADD` / `DROP` / `MODIFY COLUMN` | Table-copy `ALTER` | `ALGORITHM=INSTANT` changes only the definition: on 308,100 rows it took 3.7 ms against 183.7 ms for `ALGORITHM=COPY` (49x) (see [benchmark](#benchmark)), and the copy grows with the table. A type change is refused with error 1846 instead of silently copying. | A column is added, dropped or widened on a large, busy table. | The change is a type change (it cannot be instant), or the table is small enough that a copy does not matter. | `python/instant_alter/` | 6 |
-| 11 | Progress reporting | A silent `ALTER TABLE` | The process list reports the statement while `ADD INDEX ... ALGORITHM=INPLACE, LOCK=NONE` runs on 300,000 rows. The demo's monitor prints what a second connection sees; in our runs on 11.4 that was state `altering table`, stage 0/0 and no percentage. | A long `ALTER` runs and you want to know it is alive. | You expect a percentage bar on 11.4; we did not see one. | `python/progress_reporting/` | 10 |
-| 12 | Global temporary tables | Per-session `TEMPORARY TABLE` | **Not available.** `CREATE GLOBAL TEMPORARY TABLE` fails with error 1064 on 11.4 ([MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915)). The demo captures the real error. | — | — | `python/global_temp/` | 3 |
-| 13 | `UPDATE` / `DELETE` from a CTE | Nested `WHERE IN (SELECT ...)` | **`WITH ... UPDATE` needs 12.3; on 11.4 it fails with error 1064.** On 11.4 the same job works with `UPDATE ... JOIN (SELECT ...) AS name`, which also names the filter. | You can run 12.3, or accept the `JOIN` form. | The filter is a plain condition on the same table: `UPDATE ... WHERE` is shorter. | `python/cte_update_delete/` | 4 |
+| 10 | Instant `ADD` / `DROP` / `MODIFY COLUMN` | Table-copy `ALTER` | `ALGORITHM=INSTANT` changes only the definition: on 308,100 rows it took 2.0 ms against 172.9 ms for `ALGORITHM=COPY` (86x) (see [benchmark](#benchmark)), and the copy grows with the table. A type change is refused with error 1846 instead of silently copying. | A column is added, dropped or widened on a large, busy table. | The change is a type change (it cannot be instant), or the table is small enough that a copy does not matter. | `python/instant_alter/` | 6 |
+| 11 | Progress reporting | A silent `ALTER TABLE` | The process list reports the statement while `ADD INDEX ... ALGORITHM=INPLACE, LOCK=NONE` runs on 300,000 rows. The demo's monitor prints what a second connection sees; in our runs on 11.4 and on 12.3.3 that was state `altering table`, stage 0/0 and progress 0.00%. | A long `ALTER` runs and you want to know it is alive. | You expect a percentage bar; we did not see one on either version. | `python/progress_reporting/` | 10 |
+| 12 | Global temporary tables | Per-session `TEMPORARY TABLE` | **Not available.** `CREATE GLOBAL TEMPORARY TABLE` fails with error 1064 on 11.4 and on 12.3.3 ([MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915)). The demo captures the real error. | — | — | `python/global_temp/` | 3 |
+| 13 | `UPDATE` / `DELETE` from a CTE | Nested `WHERE IN (SELECT ...)` | `WITH name AS (SELECT ...) UPDATE / DELETE ...` names the filter and works on 12.3.3, also when the CTE reads the table being changed. **Needs 12.3.1 ([MDEV-37220](https://jira.mariadb.org/browse/MDEV-37220)): on 11.4 it is error 1064**, and `UPDATE ... JOIN (SELECT ...) AS name` does the same job. | The filter has a meaning worth naming, or several steps. | The filter is a plain condition on the same table: `UPDATE ... WHERE` is shorter. | `python/cte_update_delete/` | 6 |
 
 Features 12 and 13 are marked for 12.3 on the project page, and `IS JSON` (7)
-also arrived in 12.3.1. We pin 11.4, so the demos show what works there and
-record exactly where a newer server is needed. Global temporary tables are not
-in 12.3 either: [MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915) is
-still open and targets 13.3. Test counts add up to **115**.
+also arrived in 12.3.1. We pin 12.3.3, so features 7 and 13 run as working demos. On
+11.4 the same demos print the real error and fall back to the older form, and CI runs
+the tests on both versions. Global temporary tables (12) are not in 12.3 either:
+[MDEV-35915](https://jira.mariadb.org/browse/MDEV-35915) is still open and targets 13.3.
+Test counts add up to **124**.
 
 ---
 
@@ -123,7 +124,7 @@ installed and running, and Python 3.12 or newer (tested with 3.12 and 3.14).
    cp .env.example .env
    ```
 
-3. Start MariaDB 11.4. On first start it runs every file in `sql/init/` and
+3. Start MariaDB 12.3.3. On first start it runs every file in `sql/init/` and
    loads the OpenFlights data, which takes about a minute:
 
    ```bash
@@ -149,13 +150,13 @@ installed and running, and Python 3.12 or newer (tested with 3.12 and 3.14).
    pip install -r requirements.txt
    ```
 
-7. Check the connection. Expected output: `Connected! MariaDB version: 11.4.x-MariaDB-...`
+7. Check the connection. Expected output: `Connected! MariaDB version: 12.3.3-MariaDB-...`
 
    ```bash
    python db.py
    ```
 
-8. Run the tests. Expected output: `115 passed`:
+8. Run the tests. Expected output: `124 passed`:
 
    ```bash
    pytest
@@ -213,16 +214,16 @@ any demo more than once.
 python benchmark.py
 ```
 
-Results from one run on a MacBook Air (Python 3.14, Docker `mariadb:11.4`, client and server on the same machine):
+Results from one run on a MacBook Air (Python 3.14, Docker `mariadb:12.3.3`, client and server on the same machine):
 
 **`RETURNING` against `INSERT` + `SELECT`** (200 operations per round, 5 rounds, order alternated):
 
 | Approach | Statements per operation | Mean per operation | Std dev |
 |---|---|---|---|
-| `INSERT` + `SELECT` (old way) | 2 | 0.323 ms | 0.019 ms |
-| `INSERT ... RETURNING` | 1 | 0.185 ms | 0.005 ms |
+| `INSERT` + `SELECT` (old way) | 2 | 0.300 ms | 0.048 ms |
+| `INSERT ... RETURNING` | 1 | 0.174 ms | 0.019 ms |
 
-`RETURNING` was 42.6% faster per operation and sent half as many statements.
+`RETURNING` was 42.0% faster per operation and sent half as many statements.
 
 **Storage** for 100,000 rows (`id` + value + index on the value):
 
@@ -237,10 +238,10 @@ Results from one run on a MacBook Air (Python 3.14, Docker `mariadb:11.4`, clien
 
 | Algorithm | Mean | Std dev |
 |---|---|---|
-| `ALGORITHM=COPY` (old way: the table is rebuilt) | 183.7 ms | 3.2 ms |
-| `ALGORITHM=INSTANT` | 3.7 ms | 1.8 ms |
+| `ALGORITHM=COPY` (old way: the table is rebuilt) | 172.9 ms | 1.8 ms |
+| `ALGORITHM=INSTANT` | 2.0 ms | 0.5 ms |
 
-`INSTANT` was 49x faster. A copy rewrites every row, so its time grows with
+`INSTANT` was 86x faster. A copy rewrites every row, so its time grows with
 the table; an instant change only rewrites the definition.
 
 Timings will differ on another machine, so run `python benchmark.py` to
@@ -296,9 +297,9 @@ ALTER TABLE customers ADD COLUMN email VARCHAR(150), ALGORITHM=INSTANT;
 | `sql/init/` | The schema and data: 14 numbered SQL files |
 | `data/` | OpenFlights CSV files |
 | `python/<feature>/` | `before.py` and `after.py` for each feature ([index](python/README.md)) |
-| `tests/` | 115 pytest tests; `conftest.py` gives each test one connection and rolls back |
+| `tests/` | 124 pytest tests; `conftest.py` gives each test one connection and rolls back |
 | `benchmark.py` | Statements, bytes and migration time, with repeated runs |
-| `.github/workflows/tests.yml` | CI: starts MariaDB 11.4 and runs `pytest` on every push and pull request |
+| `.github/workflows/tests.yml` | CI: starts MariaDB 12.3.3 and 11.4.13 and runs `pytest` on both, on every push and pull request |
 | `db.py` | Connection helper; reads credentials from `.env` |
 
 The credentials in `.env.example` are local demo values for a throwaway
@@ -310,12 +311,12 @@ container, not secrets. All values reach the server through query parameters.
 
 - **Method.** For every feature we wrote the same job twice, `before.py` and
   `after.py`, and checked each claim in this README with a pytest test against
-  the real server. Where a feature turned out not to work on 11.4, we kept the
+  the real server. Where a feature turned out not to work on a version, we kept the
   demo and recorded the real error and the version that adds it.
 - **Measurements.** `benchmark.py` repeats every timing in several rounds with
   alternating order and reports the spread; storage comes from the server's own
   `information_schema`.
-- **Checks.** CI starts a fresh MariaDB 11.4 from `sql/init/` and runs all tests
+- **Checks.** CI starts a fresh MariaDB 12.3.3 and a fresh 11.4.13 from `sql/init/` and runs all tests on both
   on every push and pull request, so the setup above is tested from zero.
 
 ---
@@ -324,7 +325,7 @@ container, not secrets. All values reach the server through query parameters.
 
 | Member | Work (from the git history) |
 |---|---|
-| Yosief Gebrewahid Kidane | Instant `ALTER` (`14_instant_alter.sql`, demos, tests, migration benchmark), `CREATE OR REPLACE`, `RETURNING`, `CREATE SEQUENCE`, invisible columns, global temporary tables (limit), the OpenFlights dataset (`12_flight_dataset.sql`) and `benchmark.py`, the final `ROW` type and progress-reporting demos and tests, the `ip_addresses` before/after demo and tests, and the test fixture shared by all tests |
+| Yosief Gebrewahid Kidane | The move to MariaDB 12.3.3 (working `IS JSON` and `WITH ... UPDATE / DELETE` demos and tests, CI on 12.3.3 and 11.4.13), instant `ALTER` (`14_instant_alter.sql`, demos, tests, migration benchmark), `CREATE OR REPLACE`, `RETURNING`, `CREATE SEQUENCE`, invisible columns, global temporary tables (limit), the OpenFlights dataset (`12_flight_dataset.sql`) and `benchmark.py`, the final `ROW` type and progress-reporting demos and tests, the `ip_addresses` before/after demo and tests, and the test fixture shared by all tests |
 | Timofey Stukalin | `UUID`, `INTERSECT` / `EXCEPT`, CTE `UPDATE` / `DELETE`, `IS JSON` check (`02_isjson_check.sql`, `test_products.py`), `INET` before/after (`03_inet.sql`, `python/inet/`), first versions of `docker-compose.yml` and `db.py` |
 | Dinu Panackal Devassia | `INET4` / `INET6` table and data (`01_inet.sql`); early drafts of the `ROW` type and progress reporting, replaced by the final versions above |
 

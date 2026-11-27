@@ -1,6 +1,6 @@
 services:
   mariadb:
-    image: mariadb:11.4
+    image: ${MARIADB_IMAGE:-mariadb:12.3.3}   # an exact version; CI also runs mariadb:11.4.13
     container_name: mighty_coders_db
     restart: unless-stopped
     environment:

@@ -23,3 +23,16 @@ def conn():
     yield connection
     connection.rollback()
     connection.close()
+
+
+def server_version(connection):
+    """The server version as a tuple, e.g. (12, 3, 3) for '12.3.3-MariaDB-ubu2404'."""
+    with connection.cursor() as cur:
+        cur.execute("SELECT VERSION()")
+        number = cur.fetchone()[0].split("-")[0]
+    return tuple(int(part) for part in number.split("."))
+
+
+@pytest.fixture
+def version(conn):
+    return server_version(conn)
