@@ -10,6 +10,15 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 12.3.3: the version we pin. 11.4.13: the previous LTS, where IS JSON and
+        # WITH ... UPDATE/DELETE must fail with error 1064 (the tests check both sides).
+        mariadb: ["mariadb:12.3.3", "mariadb:11.4.13"]
+    name: pytest (${{ matrix.mariadb }})
+    env:
+      MARIADB_IMAGE: ${{ matrix.mariadb }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +30,7 @@ jobs:
       - name: Configure environment
         run: cp .env.example .env
 
-      - name: Start MariaDB 11.4 (runs every script in sql/init/)
+      - name: Start ${{ matrix.mariadb }} (runs every script in sql/init/)
         run: docker compose up -d
 
       - name: Wait until the final server is up and the dataset is loaded
